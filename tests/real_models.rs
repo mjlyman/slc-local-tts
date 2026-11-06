@@ -59,8 +59,9 @@ fn data_dir() -> DataDir {
 }
 
 /// Points `TMP`/`TEMP` at the data folder's private espeak dir and runs the
-/// startup check, once per process, as `main` and `server::start` do. Every
-/// test calls this first. Returns the check's outcome, so each test fails
+/// startup check, once per process, the way `server::start` does. Only the
+/// check runs with `TMP`/`TEMP` redirected: a guard puts them back as soon as
+/// it finishes, and `main` never redirects them. Every test calls this first. Returns the check's outcome, so each test fails
 /// with the reason instead of a poisoned `Once`.
 fn setup() -> &'static Result<(), String> {
     static SETUP: OnceLock<Result<(), String>> = OnceLock::new();

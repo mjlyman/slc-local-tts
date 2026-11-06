@@ -166,8 +166,10 @@ mod tests {
     fn newest_rollback_wins() {
         let (tmp, root) = setup();
         fs::create_dir(&root).unwrap();
-        let first = tmp.path().join(format!("{ROOT}.{SUFFIX}"));
-        let second = tmp.path().join(format!("{ROOT}.zzzzzzzzzzzzzzz9"));
+        // The older folder's name sorts last and the newer one's sorts first,
+        // so picking by name order instead of by time would get this wrong.
+        let first = tmp.path().join(format!("{ROOT}.zzzzzzzzzzzzzzz9"));
+        let second = tmp.path().join(format!("{ROOT}.{SUFFIX}"));
         fs::create_dir(&first).unwrap();
         fs::create_dir(&second).unwrap();
         std::thread::sleep(Duration::from_millis(50));

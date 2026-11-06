@@ -16,6 +16,8 @@ jobs:
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       # The fetch scripts pin the archive URLs and hashes, so their hashes are the cache key.
       - name: Cache native libraries
@@ -46,7 +48,7 @@ jobs:
           }
 
       - name: Test
-        run: cargo test
+        run: cargo test --locked
 
       # rust-cache keeps ~/.cargo/bin, so this is a no-op once cargo-about is
       # cached. cargo-about 0.9.2 builds its binary only with the `cli` feature.

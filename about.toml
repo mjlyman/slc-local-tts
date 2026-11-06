@@ -2,7 +2,8 @@
 # slc-local-tts.exe. scripts/make-notices.ps1 runs it.
 #
 # Rule: a licence goes on this list only if the FSF lists it as compatible
-# with GPL-3.0. Ask before adding one.
+# with GPL-3.0, or the maintainer has reviewed and approved it (as for
+# bzip2-1.0.6 below). Ask before adding one.
 accepted = [
     "MIT",
     "Apache-2.0",
