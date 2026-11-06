@@ -26,9 +26,8 @@ starts SLC Local TTS at once.
 `slc-local-tts.exe` you started yourself):
 
 1. Close the earlier copy before you run Setup.
-2. Setup finds the existing SLC Local TTS folder and asks whether to
-   overwrite or repair it. Accept it: your voices and settings are
-   kept.
+2. Setup finds the existing folder and says SLC Local TTS is already
+   installed. Click **Repair**: your voices and settings are kept.
 3. From then on, start SLC Local TTS from the Start Menu. Stop using the
    old `slc-local-tts.exe`, or delete it: it never updates itself.
 
@@ -68,7 +67,8 @@ starts SLC Local TTS at once.
 
 This works whether or not SLC Local TTS is already running. These are
 PowerShell commands. Open PowerShell: right-click the Start button and
-choose **Terminal** (Windows 11) or **Windows PowerShell** (Windows 10).
+choose **Terminal** or **Windows Terminal** (Windows 11), or **Windows
+PowerShell** (Windows 10).
 Then run:
 
 ```powershell
@@ -134,18 +134,21 @@ SLC Local TTS updates itself from GitHub:
 - To turn update checks off, put `check_for_updates = false` in
   `config.toml` (see below).
 
-You don't need Setup.exe to update. If you run it again anyway, it offers to
-repair the install. A repair keeps your voices and settings. Setup closes
-SLC Local TTS while it works, so don't do this mid-flight.
+You don't need Setup.exe to update. If you run it again anyway, it says SLC
+Local TTS is already installed and offers **Repair**. A repair keeps your
+voices and settings. Setup closes SLC Local TTS while it works, so don't do
+this mid-flight.
 
 ### Uninstall
 
 Open Windows **Settings**, then **Apps**, then find **SLC Local TTS** and
 choose **Uninstall**.
 
-This deletes the whole `%LocalAppData%\SLC-Local-TTS\` folder, including
-your voices, settings and logs. To start fresh, uninstall and then install
-again.
+This removes SLC Local TTS and is meant to delete the whole
+`%LocalAppData%\SLC-Local-TTS\` folder, including your voices, settings and
+logs. If that folder is still there afterwards, you can delete it yourself.
+To start fresh, uninstall, delete that folder if it's still there, then
+install again.
 
 ### Where your files are
 
@@ -336,8 +339,8 @@ the same version, delete that folder (or use a new one) first.
    & "$env:LOCALAPPDATA\SLC-Local-TTS\current\slc-local-tts.exe"
    ```
 
-   It downloads the new version. Press Ctrl+C, then start it again to
-   install it. Afterwards, clear the variable with
+   It downloads the new version. When it says `Version X is ready`, press
+   Ctrl+C, then start it again to install it. Afterwards, clear the variable with
    `Remove-Item Env:SLC_LOCAL_TTS_UPDATE_FEED`, or close that terminal.
 
 `SLC_LOCAL_TTS_UPDATE_FEED` may also be an `http://` or `https://` URL. When
