@@ -26,8 +26,8 @@ starts SLC Local TTS at once.
 `slc-local-tts.exe` you started yourself):
 
 1. Close the earlier copy before you run Setup.
-2. Setup finds the existing folder and says SLC Local TTS is already
-   installed. Click **Repair**: your voices and settings are kept.
+2. If Setup says SLC Local TTS is already installed, click **Repair**.
+   Either way, your voices and settings are kept.
 3. From then on, start SLC Local TTS from the Start Menu. Stop using the
    old `slc-local-tts.exe`, or delete it: it never updates itself.
 
