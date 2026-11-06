@@ -1,0 +1,28 @@
+id,name,gender,license
+en_GB-alba-medium,Alba,female,CC-BY-4.0
+en_GB-aru-medium,ARU,-,CC-BY-4.0
+en_GB-cori-high,Cori,female,public-domain
+en_GB-cori-medium,Cori,female,public-domain
+en_GB-jenny_dioco-medium,Jenny Dioco,female,Jenny-Dioco-attribution
+en_GB-northern_english_male-medium,Northern English Male,male,CC-BY-SA-4.0
+en_GB-semaine-medium,Semaine,-,CC-BY-NC-SA-4.0
+en_GB-southern_english_female-low,Southern English Female,female,CC-BY-SA-4.0
+en_GB-vctk-medium,VCTK,-,CC-BY-4.0
+en_US-bryce-medium,Bryce,male,public-domain
+en_US-hfc_female-medium,HFC Female,female,CC-BY-NC-SA-4.0
+en_US-hfc_male-medium,HFC Male,male,CC-BY-NC-SA-4.0
+en_US-joe-medium,Joe,male,CC0-1.0
+en_US-john-medium,John,male,public-domain
+en_US-kathleen-low,Kathleen,female,CC0-1.0
+en_US-kristin-medium,Kristin,female,public-domain
+en_US-l2arctic-medium,L2-ARCTIC,-,CC-BY-NC-4.0
+en_US-libritts_r-medium,LibriTTS-R,-,CC-BY-4.0
+en_US-libritts-high,LibriTTS,-,CC-BY-4.0
+en_US-ljspeech-high,LJSpeech,female,public-domain
+en_US-ljspeech-medium,LJSpeech,female,public-domain
+en_US-norman-medium,Norman,male,public-domain
+en_US-reza_ibrahim-medium,Reza Ibrahim,male,CC0-1.0
+en_US-ryan-high,Ryan,male,CC-BY-NC-SA-4.0
+en_US-ryan-low,Ryan,male,CC-BY-NC-SA-4.0
+en_US-ryan-medium,Ryan,male,CC-BY-NC-SA-4.0
+en_US-sam-medium,Sam,neutral,Apache-2.0

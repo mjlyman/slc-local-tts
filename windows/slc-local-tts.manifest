@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  The Windows application manifest that build.rs embeds in every binary this
+  package links: slc-local-tts.exe and the unit- and integration-test
+  executables.
+
+  Why it exists: espeak-ng (C) opens its data files through narrow `char*`
+  APIs (fopen and friends), and sherpa-onnx's C++ model loading very likely
+  does too (std::ifstream and similar). Windows decodes those bytes in the
+  process's ANSI code page, normally 1252 here, but Rust hands them UTF-8
+  paths. A data folder under a user name with accents,
+  such as C:\Users\Jürgen\AppData\Local\SLC-Local-TTS, then can't be found,
+  and every voice fails. `activeCodePage` makes the ANSI code page UTF-8
+  (Windows 10 version 1903 or newer), so those narrow APIs read UTF-8.
+
+  link.exe adds the UAC section (requestedExecutionLevel asInvoker) itself, so
+  this file doesn't repeat it. Windows allows only one manifest, so any later
+  entries (common controls, DPI) go in this file too.
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0" xmlns:asmv3="urn:schemas-microsoft-com:asm.v3">
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 10 and Windows 11. -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>
+    </application>
+  </compatibility>
+  <asmv3:application>
+    <asmv3:windowsSettings>
+      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+    </asmv3:windowsSettings>
+  </asmv3:application>
+</assembly>

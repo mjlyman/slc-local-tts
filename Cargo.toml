@@ -1,0 +1,76 @@
+[package]
+name = "slc-local-tts"
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.99"
+license = "GPL-3.0-or-later"
+publish = false
+description = "Local, ElevenLabs-compatible text-to-speech server for Self-Loading Cargo."
+
+[lib]
+name = "slc_local_tts"
+path = "src/lib.rs"
+
+[[bin]]
+name = "slc-local-tts"
+path = "src/main.rs"
+
+[dependencies]
+# Speech runtime and phonemizer: exact pins. piper-phonemize-sys is
+# listed directly because piper-phonemize only asks for a caret range.
+sherpa-onnx = "=2.0.1"
+piper-phonemize = "=1.5.9"
+piper-phonemize-sys = "=1.5.9"
+
+# HTTP server
+axum = "0.8"
+tokio = { version = "1.54", features = ["rt-multi-thread", "macros", "time", "sync", "fs", "net", "signal"] }
+tower-http = { version = "0.6", features = ["catch-panic", "normalize-path"] }
+
+# Model downloads (default TLS = native TLS, Windows SChannel)
+reqwest = { version = "0.12", features = ["stream"] }
+sha2 = "0.10"
+# bzip2 0.6 defaults to the pure-Rust backend (libbz2-rs-sys); no C library.
+bzip2 = "0.6"
+tar = "0.4"
+
+# Config, errors, CLI
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.9"
+thiserror = "2"
+clap = { version = "4", features = ["derive"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = "0.3"
+tracing-appender = "0.2"
+
+# Installer and auto-update (exact pin)
+velopack = "=1.2.161"
+
+# Windows APIs (priority, console, file system, memory stats, single instance)
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_System_Console",
+    "Win32_Storage_FileSystem",
+    "Win32_System_ProcessStatus",
+    # CreateMutexW (the single-instance check) is gated on this feature.
+    "Win32_Security",
+    # GetACP, for the test that checks the UTF-8 code page manifest.
+    "Win32_Globalization",
+] }
+
+[dev-dependencies]
+tokio = { version = "1.54", features = ["test-util"] }
+tower = { version = "0.5", features = ["util"] }
+insta = { version = "1", features = ["json", "redactions"] }
+tempfile = "3"
+walkdir = "2"
+
+[profile.release]
+# A panic must never take the server down: CatchPanicLayer turns a handler
+# panic into a response, and a panicking blocking task surfaces as a JoinError.
+# Both rely on panics unwinding rather than aborting the process.
+panic = "unwind"

@@ -1,0 +1,6 @@
+[env]
+SHERPA_ONNX_LIB_DIR = { value = ".native/sherpa-onnx-v2.0.1-win-x64-static-MT-Release-lib/lib", relative = true }
+PIPER_PHONEMIZE_LIB_DIR = { value = ".native/piper-phonemize-v1.5.9-windows-x64-static-lib/lib", relative = true }
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

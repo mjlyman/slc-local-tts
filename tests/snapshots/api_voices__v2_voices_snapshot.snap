@@ -1,0 +1,1686 @@
+---
+source: tests/api_voices.rs
+assertion_line: 17
+expression: resp.json()
+---
+{
+  "has_more": false,
+  "next_page_token": null,
+  "total_count": 65,
+  "voices": [
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (Great Britain), medium",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "british",
+        "engine": "piper",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "Alba (UK, medium, Piper)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "en_GB-alba-medium"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (Great Britain), medium",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "british",
+        "engine": "piper",
+        "status": "downloadable"
+      },
+      "name": "ARU (UK, medium, Piper)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "en_GB-aru-medium"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (Great Britain), high",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "british",
+        "engine": "piper",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "Cori (UK, high, Piper)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "en_GB-cori-high"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (Great Britain), medium",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "british",
+        "engine": "piper",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "Cori (UK, medium, Piper)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "en_GB-cori-medium"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (Great Britain), medium",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "british",
+        "engine": "piper",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "Jenny Dioco (UK, medium, Piper)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "en_GB-jenny_dioco-medium"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (Great Britain), medium",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "british",
+        "engine": "piper",
+        "gender": "male",
+        "status": "downloadable"
+      },
+      "name": "Northern English Male (UK, medium, Piper)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "en_GB-northern_english_male-medium"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (Great Britain), medium; non-commercial use only",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "british",
+        "engine": "piper",
+        "status": "downloadable"
+      },
+      "name": "Semaine (UK, medium, Piper)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "en_GB-semaine-medium"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (Great Britain), low",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "british",
+        "engine": "piper",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "Southern English Female (UK, low, Piper)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "en_GB-southern_english_female-low"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (Great Britain), medium",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "british",
+        "engine": "piper",
+        "status": "downloadable"
+      },
+      "name": "VCTK (UK, medium, Piper)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "en_GB-vctk-medium"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), medium",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "piper",
+        "gender": "male",
+        "status": "downloadable"
+      },
+      "name": "Bryce (US, medium, Piper)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "en_US-bryce-medium"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), medium; non-commercial use only",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "piper",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "HFC Female (US, medium, Piper)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "en_US-hfc_female-medium"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), medium; non-commercial use only",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "piper",
+        "gender": "male",
+        "status": "downloadable"
+      },
+      "name": "HFC Male (US, medium, Piper)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "en_US-hfc_male-medium"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), medium",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "piper",
+        "gender": "male",
+        "status": "downloadable"
+      },
+      "name": "Joe (US, medium, Piper)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "en_US-joe-medium"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), medium",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "piper",
+        "gender": "male",
+        "status": "downloadable"
+      },
+      "name": "John (US, medium, Piper)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "en_US-john-medium"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), low",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "piper",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "Kathleen (US, low, Piper)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "en_US-kathleen-low"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), medium",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "piper",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "Kristin (US, medium, Piper)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "en_US-kristin-medium"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), medium; non-commercial use only",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "piper",
+        "status": "downloadable"
+      },
+      "name": "L2-ARCTIC (US, medium, Piper)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "en_US-l2arctic-medium"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), medium",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "piper",
+        "status": "downloadable"
+      },
+      "name": "LibriTTS-R (US, medium, Piper)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "en_US-libritts_r-medium"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), high",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "piper",
+        "status": "downloadable"
+      },
+      "name": "LibriTTS (US, high, Piper)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "en_US-libritts-high"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), high",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "piper",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "LJSpeech (US, high, Piper)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "en_US-ljspeech-high"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), medium",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "piper",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "LJSpeech (US, medium, Piper)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "en_US-ljspeech-medium"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), medium",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "piper",
+        "gender": "male",
+        "status": "downloadable"
+      },
+      "name": "Norman (US, medium, Piper)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "en_US-norman-medium"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), medium",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "piper",
+        "gender": "male",
+        "status": "downloadable"
+      },
+      "name": "Reza Ibrahim (US, medium, Piper)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "en_US-reza_ibrahim-medium"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), high; non-commercial use only",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "piper",
+        "gender": "male",
+        "status": "downloadable"
+      },
+      "name": "Ryan (US, high, Piper)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "en_US-ryan-high"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), low; non-commercial use only",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "piper",
+        "gender": "male",
+        "status": "downloadable"
+      },
+      "name": "Ryan (US, low, Piper)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "en_US-ryan-low"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), medium; non-commercial use only",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "piper",
+        "gender": "male",
+        "status": "downloadable"
+      },
+      "name": "Ryan (US, medium, Piper)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "en_US-ryan-medium"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), medium",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "piper",
+        "gender": "neutral",
+        "status": "downloadable"
+      },
+      "name": "Sam (US, medium, Piper)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "en_US-sam-medium"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), Kokoro v1.0 (slow on most CPUs)",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "kokoro",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "Alloy (US, Kokoro, slow)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "af_alloy"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), Kokoro v1.0 (slow on most CPUs)",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "kokoro",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "Aoede (US, Kokoro, slow)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "af_aoede"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), Kokoro v1.0 (slow on most CPUs)",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "kokoro",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "Bella (US, Kokoro, slow)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "af_bella"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), Kokoro v1.0 (slow on most CPUs)",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "kokoro",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "Heart (US, Kokoro, slow)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "af_heart"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), Kokoro v1.0 (slow on most CPUs)",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "kokoro",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "Jessica (US, Kokoro, slow)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "af_jessica"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), Kokoro v1.0 (slow on most CPUs)",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "kokoro",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "Kore (US, Kokoro, slow)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "af_kore"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), Kokoro v1.0 (slow on most CPUs)",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "kokoro",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "Nicole (US, Kokoro, slow)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "af_nicole"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), Kokoro v1.0 (slow on most CPUs)",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "kokoro",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "Nova (US, Kokoro, slow)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "af_nova"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), Kokoro v1.0 (slow on most CPUs)",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "kokoro",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "River (US, Kokoro, slow)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "af_river"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), Kokoro v1.0 (slow on most CPUs)",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "kokoro",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "Sarah (US, Kokoro, slow)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "af_sarah"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), Kokoro v1.0 (slow on most CPUs)",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "kokoro",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "Sky (US, Kokoro, slow)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "af_sky"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), Kokoro v1.0 (slow on most CPUs)",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "kokoro",
+        "gender": "male",
+        "status": "downloadable"
+      },
+      "name": "Adam (US, Kokoro, slow)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "am_adam"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), Kokoro v1.0 (slow on most CPUs)",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "kokoro",
+        "gender": "male",
+        "status": "downloadable"
+      },
+      "name": "Echo (US, Kokoro, slow)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "am_echo"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), Kokoro v1.0 (slow on most CPUs)",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "kokoro",
+        "gender": "male",
+        "status": "downloadable"
+      },
+      "name": "Eric (US, Kokoro, slow)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "am_eric"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), Kokoro v1.0 (slow on most CPUs)",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "kokoro",
+        "gender": "male",
+        "status": "downloadable"
+      },
+      "name": "Fenrir (US, Kokoro, slow)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "am_fenrir"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), Kokoro v1.0 (slow on most CPUs)",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "kokoro",
+        "gender": "male",
+        "status": "downloadable"
+      },
+      "name": "Liam (US, Kokoro, slow)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "am_liam"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), Kokoro v1.0 (slow on most CPUs)",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "kokoro",
+        "gender": "male",
+        "status": "downloadable"
+      },
+      "name": "Michael (US, Kokoro, slow)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "am_michael"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), Kokoro v1.0 (slow on most CPUs)",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "kokoro",
+        "gender": "male",
+        "status": "downloadable"
+      },
+      "name": "Onyx (US, Kokoro, slow)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "am_onyx"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), Kokoro v1.0 (slow on most CPUs)",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "kokoro",
+        "gender": "male",
+        "status": "downloadable"
+      },
+      "name": "Puck (US, Kokoro, slow)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "am_puck"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (United States), Kokoro v1.0 (slow on most CPUs)",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "american",
+        "engine": "kokoro",
+        "gender": "male",
+        "status": "downloadable"
+      },
+      "name": "Santa (US, Kokoro, slow)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "am_santa"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (Great Britain), Kokoro v1.0 (slow on most CPUs)",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "british",
+        "engine": "kokoro",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "Alice (UK, Kokoro, slow)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "bf_alice"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (Great Britain), Kokoro v1.0 (slow on most CPUs)",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "british",
+        "engine": "kokoro",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "Emma (UK, Kokoro, slow)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "bf_emma"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (Great Britain), Kokoro v1.0 (slow on most CPUs)",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "british",
+        "engine": "kokoro",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "Isabella (UK, Kokoro, slow)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "bf_isabella"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (Great Britain), Kokoro v1.0 (slow on most CPUs)",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "british",
+        "engine": "kokoro",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "Lily (UK, Kokoro, slow)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "bf_lily"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (Great Britain), Kokoro v1.0 (slow on most CPUs)",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "british",
+        "engine": "kokoro",
+        "gender": "male",
+        "status": "downloadable"
+      },
+      "name": "Daniel (UK, Kokoro, slow)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "bm_daniel"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (Great Britain), Kokoro v1.0 (slow on most CPUs)",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "british",
+        "engine": "kokoro",
+        "gender": "male",
+        "status": "downloadable"
+      },
+      "name": "Fable (UK, Kokoro, slow)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "bm_fable"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (Great Britain), Kokoro v1.0 (slow on most CPUs)",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "british",
+        "engine": "kokoro",
+        "gender": "male",
+        "status": "downloadable"
+      },
+      "name": "George (UK, Kokoro, slow)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "bm_george"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English (Great Britain), Kokoro v1.0 (slow on most CPUs)",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "accent": "british",
+        "engine": "kokoro",
+        "gender": "male",
+        "status": "downloadable"
+      },
+      "name": "Lewis (UK, Kokoro, slow)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "bm_lewis"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English, Supertonic 3",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "engine": "supertonic",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "F1 (Supertonic)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "F1"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English, Supertonic 3",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "engine": "supertonic",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "F2 (Supertonic)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "F2"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English, Supertonic 3",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "engine": "supertonic",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "F3 (Supertonic)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "F3"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English, Supertonic 3",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "engine": "supertonic",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "F4 (Supertonic)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "F4"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English, Supertonic 3",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "engine": "supertonic",
+        "gender": "female",
+        "status": "downloadable"
+      },
+      "name": "F5 (Supertonic)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "F5"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English, Supertonic 3",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "engine": "supertonic",
+        "gender": "male",
+        "status": "downloadable"
+      },
+      "name": "M1 (Supertonic)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "M1"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English, Supertonic 3",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "engine": "supertonic",
+        "gender": "male",
+        "status": "downloadable"
+      },
+      "name": "M2 (Supertonic)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "M2"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English, Supertonic 3",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "engine": "supertonic",
+        "gender": "male",
+        "status": "downloadable"
+      },
+      "name": "M3 (Supertonic)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "M3"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English, Supertonic 3",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "engine": "supertonic",
+        "gender": "male",
+        "status": "downloadable"
+      },
+      "name": "M4 (Supertonic)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "M4"
+    },
+    {
+      "available_for_tiers": [],
+      "category": "premade",
+      "description": "English, Supertonic 3",
+      "fine_tuning": {
+        "state": {}
+      },
+      "labels": {
+        "engine": "supertonic",
+        "gender": "male",
+        "status": "downloadable"
+      },
+      "name": "M5 (Supertonic)",
+      "preview_url": "[url]",
+      "samples": [],
+      "settings": {
+        "similarity_boost": 1.0,
+        "speed": 1.0,
+        "stability": 1.0,
+        "style": 0.0,
+        "use_speaker_boost": false
+      },
+      "sharing": null,
+      "voice_id": "M5"
+    }
+  ]
+}
