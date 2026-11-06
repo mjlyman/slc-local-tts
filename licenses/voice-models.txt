@@ -6,33 +6,33 @@ from the k2-fsa/sherpa-onnx "tts-models" release
 (https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models). Each voice is
 under its own licence:
 
-- en_GB-alba-medium: CC-BY-4.0. Piper voice trained on the dataset at https://datashare.ed.ac.uk/handle/10283/3270.
-- en_GB-aru-medium: CC-BY-4.0. Piper voice trained on the dataset at https://www.liverpool.ac.uk/architecture/research/acoustics-research-unit/speech-corpus/.
+- en_GB-alba-medium: CC-BY-4.0. Piper voice trained on the dataset at https://datashare.ed.ac.uk/handle/10283/3270. Fine-tuned from Piper's research-only Lessac voice (see Notes).
+- en_GB-aru-medium: CC-BY-4.0. Piper voice trained on the dataset at https://www.liverpool.ac.uk/architecture/research/acoustics-research-unit/speech-corpus/. Fine-tuned from Piper's research-only Lessac voice (see Notes).
 - en_GB-cori-high: public-domain. Piper voice trained on the dataset at https://librivox.org.
 - en_GB-cori-medium: public-domain. Piper voice trained on the dataset at https://librivox.org.
-- en_GB-jenny_dioco-medium: Jenny-Dioco-attribution. Piper voice trained on the dataset at https://github.com/dioco-group/jenny-tts-dataset.
-- en_GB-northern_english_male-medium: CC-BY-SA-4.0. Piper voice trained on the dataset at http://www.openslr.org/83/.
-- en_GB-semaine-medium: CC-BY-NC-SA-4.0. Piper voice trained on the dataset at https://github.com/marytts/dfki-semaine-data.
-- en_GB-southern_english_female-low: CC-BY-SA-4.0. Piper voice trained on the dataset at http://www.openslr.org/83/.
-- en_GB-vctk-medium: CC-BY-4.0. Piper voice trained on the dataset at https://datashare.ed.ac.uk/handle/10283/3443.
+- en_GB-jenny_dioco-medium: Jenny-Dioco-attribution. Piper voice trained on the dataset at https://github.com/dioco-group/jenny-tts-dataset. Fine-tuned from Piper's research-only Lessac voice (see Notes).
+- en_GB-northern_english_male-medium: CC-BY-SA-4.0. Piper voice trained on the dataset at http://www.openslr.org/83/. Fine-tuned from Piper's research-only Lessac voice (see Notes).
+- en_GB-semaine-medium: CC-BY-NC-SA-4.0. Piper voice trained on the dataset at https://github.com/marytts/dfki-semaine-data. Fine-tuned from Piper's research-only Lessac voice (see Notes).
+- en_GB-southern_english_female-low: CC-BY-SA-4.0. Piper voice trained on the dataset at http://www.openslr.org/83/. Fine-tuned from Piper's non-commercial Ryan voice (see Notes).
+- en_GB-vctk-medium: CC-BY-4.0. Piper voice trained on the dataset at https://datashare.ed.ac.uk/handle/10283/3443. Fine-tuned from Piper's research-only Lessac voice (see Notes).
 - en_US-bryce-medium: public-domain. Piper voice; its model card names no dataset.
-- en_US-hfc_female-medium: CC-BY-NC-SA-4.0. Piper voice trained on the dataset at https://ast-astrec.nict.go.jp/en/release/hi-fi-captain/.
-- en_US-hfc_male-medium: CC-BY-NC-SA-4.0. Piper voice trained on the dataset at https://ast-astrec.nict.go.jp/en/release/hi-fi-captain/.
-- en_US-joe-medium: CC0-1.0. Piper voice trained on the dataset at https://github.com/OHF-Voice/voice-datasets.
+- en_US-hfc_female-medium: CC-BY-NC-SA-4.0. Piper voice trained on the dataset at https://ast-astrec.nict.go.jp/en/release/hi-fi-captain/. Fine-tuned from Piper's research-only Lessac voice (see Notes).
+- en_US-hfc_male-medium: CC-BY-NC-SA-4.0. Piper voice trained on the dataset at https://ast-astrec.nict.go.jp/en/release/hi-fi-captain/. Fine-tuned from Piper's research-only Lessac voice (see Notes).
+- en_US-joe-medium: CC0-1.0. Piper voice trained on the dataset at https://github.com/OHF-Voice/voice-datasets. Fine-tuned from Piper's research-only Lessac voice (see Notes).
 - en_US-john-medium: public-domain. Piper voice trained on the dataset at https://librivox.org.
-- en_US-kathleen-low: CC0-1.0. Piper voice trained on the dataset at https://github.com/rhasspy/dataset-voice-kathleen.
+- en_US-kathleen-low: CC0-1.0. Piper voice trained on the dataset at https://github.com/rhasspy/dataset-voice-kathleen. Fine-tuned from Piper's non-commercial Ryan voice (see Notes).
 - en_US-kristin-medium: public-domain. Piper voice trained on the dataset at https://librivox.org.
-- en_US-l2arctic-medium: CC-BY-NC-4.0. Piper voice trained on the dataset at https://www.isca-speech.org/archive/interspeech_2018/zhao18b_interspeech.html.
+- en_US-l2arctic-medium: CC-BY-NC-4.0. Piper voice trained on the dataset at https://www.isca-speech.org/archive/interspeech_2018/zhao18b_interspeech.html. Fine-tuned from Piper's research-only Lessac voice (see Notes).
 - en_US-libritts_r-medium: CC-BY-4.0. Piper voice trained on the dataset at http://www.openslr.org/141/.
 - en_US-libritts-high: CC-BY-4.0. Piper voice trained on the dataset at http://www.openslr.org/60/.
 - en_US-ljspeech-high: public-domain. Piper voice trained on the dataset at https://keithito.com/LJ-Speech-Dataset/.
 - en_US-ljspeech-medium: public-domain. Piper voice trained on the dataset at https://keithito.com/LJ-Speech-Dataset/.
 - en_US-norman-medium: public-domain. Piper voice trained on the dataset at https://librivox.org.
-- en_US-reza_ibrahim-medium: CC0-1.0. Piper voice trained on the dataset at https://huggingface.co/datasets/mah92/Hedayatfar-Persian-Quran-Audio-Dataset.
+- en_US-reza_ibrahim-medium: CC0-1.0. Piper voice trained on the dataset at https://huggingface.co/datasets/mah92/Hedayatfar-Persian-Quran-Audio-Dataset. Fine-tuned from Piper's research-only Lessac voice (see Notes).
 - en_US-ryan-high: CC-BY-NC-SA-4.0. Piper voice trained on the dataset at https://www.kaggle.com/datasets/roholazandie/ryanspeech.
 - en_US-ryan-low: CC-BY-NC-SA-4.0. Piper voice trained on the dataset at https://www.kaggle.com/datasets/roholazandie/ryanspeech.
-- en_US-ryan-medium: CC-BY-NC-SA-4.0. Piper voice trained on the dataset at https://www.kaggle.com/datasets/roholazandie/ryanspeech.
-- en_US-sam-medium: Apache-2.0. Piper voice trained on the dataset at https://github.com/Sam-Accenture-Non-Binary-Voice/non-binary-voice-files.
+- en_US-ryan-medium: CC-BY-NC-SA-4.0. Piper voice trained on the dataset at https://www.kaggle.com/datasets/roholazandie/ryanspeech. Fine-tuned from Piper's research-only Lessac voice (see Notes).
+- en_US-sam-medium: Apache-2.0. Piper voice trained on the dataset at https://github.com/Sam-Accenture-Non-Binary-Voice/non-binary-voice-files. Fine-tuned from Piper's research-only Lessac voice (see Notes).
 - af_alloy: Apache-2.0. Kokoro v1.0 by hexgrad (https://huggingface.co/hexgrad/Kokoro-82M).
 - af_aoede: Apache-2.0. Kokoro v1.0 by hexgrad (https://huggingface.co/hexgrad/Kokoro-82M).
 - af_bella: Apache-2.0. Kokoro v1.0 by hexgrad (https://huggingface.co/hexgrad/Kokoro-82M).
@@ -81,7 +81,19 @@ is bound by the same restrictions. The full licence:
 https://huggingface.co/Supertone/supertonic-3/blob/main/LICENSE
 
 Non-commercial voices (CC-BY-NC-4.0 and CC-BY-NC-SA-4.0): these voices may be
-used only for non-commercial purposes.
+used only for non-commercial purposes. The two voices marked "Fine-tuned from
+Piper's non-commercial Ryan voice" may carry the same restriction, whatever
+their own licence says, because Ryan is CC-BY-NC-SA-4.0.
+
+Lessac (the voices marked "Fine-tuned from Piper's research-only Lessac
+voice"): these Piper voices were made by fine-tuning Piper's en_US-lessac
+voice. That voice was trained on the Lessac dataset from the Blizzard
+Challenge 2013 (Lessac Technologies), whose licence limits its use to
+research purposes. The licence listed for each of these voices covers only
+its own training recordings. Whether the Lessac restriction also applies to a
+voice fine-tuned from it is an open question. If it matters to you, choose a
+voice without this mark. The dataset and its licence:
+https://www.cstr.ed.ac.uk/projects/blizzard/2013/lessac_blizzard2013/
 
 Jenny (en_GB-jenny_dioco-medium): the Jenny TTS dataset's licence asks that
 voice interfaces credit the voice as "Jenny (Dioco)". This voice is

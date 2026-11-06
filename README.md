@@ -372,4 +372,17 @@ source code is on [GitHub](https://github.com/mjlyman/slc-local-tts).
 `THIRD_PARTY_NOTICES.txt`, installed in
 `%LocalAppData%\SLC-Local-TTS\current\`, lists the licences of the
 libraries SLC Local TTS uses and of the voice models. Each voice model has
-its own licence.
+its own licence. Two things to know before you pick a voice:
+
+- **Some voices are for non-commercial use only:** Semaine, HFC Female, HFC
+  Male, L2-ARCTIC and all three Ryan voices. Kathleen and Southern English
+  Female may be too, because they were fine-tuned from Ryan.
+- **13 Piper voices were made from a research-only voice.** Alba, ARU, Jenny
+  Dioco, Northern English Male, Semaine, VCTK, HFC Female, HFC Male, Joe,
+  L2-ARCTIC, Reza Ibrahim, Ryan (medium) and Sam were fine-tuned from Piper's
+  Lessac voice, whose training data is licensed for research only. Whether
+  that limit carries over to them is unclear. If it matters to you, choose
+  another Piper voice, or a Kokoro or Supertonic voice.
+
+The details are in `THIRD_PARTY_NOTICES.txt` and in
+[`licenses/voice-models.txt`](licenses/voice-models.txt).
