@@ -30,8 +30,13 @@ jobs:
         shell: powershell
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-native-libs.ps1
 
-      - name: Install Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
+      # With no toolchain named, rustup installs the version
+      # rust-toolchain.toml pins, with the components it lists.
+      - name: Install Rust (the version in rust-toolchain.toml)
+        run: |
+          rustup toolchain install
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustc --version
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2

@@ -1,0 +1,8 @@
+# The Rust version for local builds, CI and releases, so a release is built
+# with the same compiler its tests ran on. rustup uses it in this folder, and
+# `rustup toolchain install` installs it. To move to a newer Rust, change the
+# version here on a branch and merge once CI passes.
+[toolchain]
+channel = "1.100.0"
+components = ["clippy", "rustfmt"]
+profile = "minimal"

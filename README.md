@@ -288,8 +288,11 @@ num_steps = 5
   "Desktop development with C++" workload. The prebuilt sherpa-onnx
   libraries were built with it; older toolsets fail to link with `LNK1120`
   (18 unresolved `__std_*` symbols).
-- Rust 1.99 or newer (edition 2024; the `rust-version` in `Cargo.toml`),
-  MSVC target.
+- [rustup](https://rustup.rs) with the MSVC target. `rust-toolchain.toml`
+  names the Rust version that CI and releases use. In the repository
+  folder, rustup uses that version; `rustup toolchain install` installs it
+  if it's missing. The code also builds on Rust 1.99, the `rust-version` in
+  `Cargo.toml`.
 - Network access while building: `piper-phonemize-sys` downloads its
   espeak-ng data in its build script.
 
