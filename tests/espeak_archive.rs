@@ -12,24 +12,24 @@ const ARCHIVE_NAME: &str = "espeak-ng-data.tar.bz2";
 const PINNED_SIZE: u64 = 7_252_012;
 const PINNED_SHA256: &str = "4135ccf82e1f40613491c0874d4945ae9e9c7840933d8e25a6f9e003d9ebf533";
 
-/// True for `.../build/piper-phonemize-sys-<hash>/out/espeak-ng-data.tar.bz2`.
+const CRATE: &str = "piper-phonemize-sys";
+
+/// True for the archive in `piper-phonemize-sys`'s build output, in either
+/// of cargo's layouts: `.../build/piper-phonemize-sys-<hash>/out/` (up to
+/// Rust 1.99) or `.../build/piper-phonemize-sys/<hash>/out/` (Rust 1.100).
 fn is_build_archive(path: &Path) -> bool {
-    let Some(out_dir) = path.parent() else {
+    if path.file_name().is_none_or(|name| name != ARCHIVE_NAME) {
         return false;
-    };
-    let Some(crate_dir) = out_dir.parent() else {
-        return false;
-    };
-    let Some(build_dir) = crate_dir.parent() else {
-        return false;
-    };
-    path.file_name().is_some_and(|n| n == ARCHIVE_NAME)
-        && out_dir.file_name().is_some_and(|n| n == "out")
-        && crate_dir
-            .file_name()
-            .and_then(|n| n.to_str())
-            .is_some_and(|n| n.starts_with("piper-phonemize-sys-"))
-        && build_dir.file_name().is_some_and(|n| n == "build")
+    }
+    // The path's folder names, in order, so neighbours can be compared.
+    let names: Vec<&str> = path
+        .components()
+        .filter_map(|component| component.as_os_str().to_str())
+        .collect();
+    let crate_with_hash = format!("{CRATE}-");
+    names.windows(2).any(|pair| {
+        pair[0] == "build" && (pair[1] == CRATE || pair[1].starts_with(&crate_with_hash))
+    })
 }
 
 fn sha256_hex(path: &Path) -> String {
@@ -41,9 +41,34 @@ fn sha256_hex(path: &Path) -> String {
 }
 
 #[test]
+fn finds_the_archive_in_either_build_layout() {
+    // Cargo up to Rust 1.99 puts a build script's output in
+    // `build/<crate>-<hash>/out/`; Rust 1.100 puts it in
+    // `build/<crate>/<hash>/out/`.
+    let old =
+        Path::new("target/debug/build/piper-phonemize-sys-0123abcd/out/espeak-ng-data.tar.bz2");
+    let new =
+        Path::new("target/debug/build/piper-phonemize-sys/0123abcd/out/espeak-ng-data.tar.bz2");
+    assert!(is_build_archive(old));
+    assert!(is_build_archive(new));
+
+    let other_crate =
+        Path::new("target/debug/build/espeak-sys/0123abcd/out/espeak-ng-data.tar.bz2");
+    let not_in_build = Path::new("target/piper-phonemize-sys/espeak-ng-data.tar.bz2");
+    let other_file = Path::new("target/debug/build/piper-phonemize-sys/0123abcd/out/other.tar.bz2");
+    assert!(!is_build_archive(other_crate));
+    assert!(!is_build_archive(not_in_build));
+    assert!(!is_build_archive(other_file));
+}
+
+#[test]
 fn every_built_espeak_archive_matches_pin() {
-    let target = Path::new(env!("CARGO_MANIFEST_DIR")).join("target");
-    let archives: Vec<PathBuf> = WalkDir::new(&target)
+    // `CARGO_TARGET_TMPDIR` is `<target folder>/tmp`, so its parent is the
+    // folder this build writes to, even when `CARGO_TARGET_DIR` moves it.
+    let target = Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .parent()
+        .expect("CARGO_TARGET_TMPDIR is inside the target folder");
+    let archives: Vec<PathBuf> = WalkDir::new(target)
         .into_iter()
         .filter_map(Result::ok)
         .map(|entry| entry.into_path())
@@ -52,7 +77,7 @@ fn every_built_espeak_archive_matches_pin() {
 
     assert!(
         !archives.is_empty(),
-        "no {ARCHIVE_NAME} found under {}/**/build/piper-phonemize-sys-*/out/; \
+        "no {ARCHIVE_NAME} found in {CRATE}'s build output under {}; \
          the build script should have downloaded it",
         target.display()
     );
