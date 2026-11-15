@@ -57,17 +57,44 @@ impl DataDir {
         self.root.join("espeak")
     }
 
+    /// An empty file whose presence means SLC has sent this server a
+    /// request at least once, so the settings window stops offering its
+    /// "Connect SLC" steps for good.
+    pub fn slc_seen_marker(&self) -> PathBuf {
+        self.root.join("slc-connected")
+    }
+
+    /// An empty file whose presence means the tray program has started at
+    /// least once, so the window that explains the tray icon opens only on
+    /// the very first start.
+    pub fn intro_marker(&self) -> PathBuf {
+        self.root.join("tray-intro-shown")
+    }
+
+    /// The port the running server is bound to, written while it serves and
+    /// removed when it stops. A second launch reads it to open the settings
+    /// window on the right port, even after `config.toml` changed. It
+    /// describes one run only, so it isn't part of [`user_data`].
+    ///
+    /// [`user_data`]: DataDir::user_data
+    pub fn port_file(&self) -> PathBuf {
+        self.root.join("running-port.txt")
+    }
+
     /// The user's files in the data folder: settings, downloaded voices,
-    /// logs and the unpacked espeak data. A repair or reinstall keeps
-    /// exactly these (`update::reinstall`); anything else in the folder is
-    /// the installer's. Anything new stored in the data folder must be
-    /// added here, or a reinstall deletes it.
-    pub fn user_data(&self) -> [PathBuf; 4] {
+    /// logs, the unpacked espeak data, the "SLC has connected" marker and
+    /// the "tray explained" marker. A repair or reinstall keeps exactly
+    /// these (`update::reinstall`); anything else in the folder is the
+    /// installer's. Anything new stored in the data folder must be added
+    /// here, or a reinstall deletes it.
+    pub fn user_data(&self) -> [PathBuf; 6] {
         [
             self.config_file(),
             self.models(),
             self.logs(),
             self.espeak_root(),
+            self.slc_seen_marker(),
+            self.intro_marker(),
         ]
     }
 }
@@ -85,5 +112,24 @@ mod tests {
         assert_eq!(dir.logs(), tmp.path().join("logs"));
         assert_eq!(dir.espeak_root(), tmp.path().join("espeak"));
         assert_eq!(dir.root(), tmp.path());
+        assert_eq!(dir.slc_seen_marker(), tmp.path().join("slc-connected"));
+    }
+
+    #[test]
+    fn user_data_includes_slc_connected() {
+        let dir = DataDir::at(PathBuf::from(r"C:\data"));
+        assert!(dir.user_data().contains(&dir.slc_seen_marker()));
+    }
+
+    #[test]
+    fn user_data_includes_intro_marker_not_port_file() {
+        let dir = DataDir::at(PathBuf::from(r"C:\data"));
+        assert_eq!(
+            dir.intro_marker(),
+            PathBuf::from(r"C:\data\tray-intro-shown")
+        );
+        assert_eq!(dir.port_file(), PathBuf::from(r"C:\data\running-port.txt"));
+        assert!(dir.user_data().contains(&dir.intro_marker()));
+        assert!(!dir.user_data().contains(&dir.port_file()));
     }
 }

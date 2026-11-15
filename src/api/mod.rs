@@ -2,6 +2,8 @@
 //! Handlers live in the submodules.
 pub mod cooldown;
 pub mod error;
+pub mod manage;
+pub mod slc;
 pub mod speak;
 pub mod voices;
 
@@ -14,12 +16,16 @@ use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use tokio::sync::watch;
 use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::normalize_path::NormalizePath;
 
-use crate::config::BaseSpeeds;
+use crate::config::{BaseSpeeds, Config};
 use crate::engine::Synthesizer;
 use crate::models::ModelStore;
+use crate::status::Live;
+use crate::stop::StopSignal;
+use crate::update::UpdateState;
 use error::AppError;
 
 /// Largest request body accepted. SLC's speech bodies are a few hundred bytes;
@@ -48,6 +54,23 @@ pub struct ApiSettings {
     pub base_speed: BaseSpeeds,
 }
 
+/// What the settings window's status route reports about the app itself.
+pub struct AppInfo {
+    /// This build's version, for example `0.3.0`.
+    pub version: &'static str,
+    /// The settings the server started with.
+    pub config: Config,
+    /// Always holds the latest state of this run's update check.
+    pub updates: watch::Receiver<UpdateState>,
+    /// The version this copy was just updated to, right after an update.
+    pub updated_to: Option<String>,
+    /// True when "Restart and update now" can work in this program.
+    pub can_restart_to_update: bool,
+    /// Stops the server. "Restart and update now" asks for a stop through
+    /// it, and the program then installs the update.
+    pub stop: StopSignal,
+}
+
 /// Everything the handlers share. Generic over the store and synthesizer so
 /// tests can plug in fakes; production uses `DiskStore` and
 /// `SherpaSynthesizer`.
@@ -59,7 +82,11 @@ pub struct AppState<S, Y> {
     /// Archives whose model recently failed to load, so they aren't loaded
     /// again for a while.
     pub load_cooldown: cooldown::LoadCooldown,
+    /// What the server is doing now and its recent requests, for the tray
+    /// and the settings window.
+    pub live: Arc<Live>,
     pub settings: ApiSettings,
+    pub app_info: AppInfo,
 }
 
 /// The `Host` header of a request that passed the host guard, with the bound
@@ -87,6 +114,9 @@ pub fn router<S: ModelStore, Y: Synthesizer>(state: Arc<AppState<S, Y>>) -> Rout
         .route("/v1/voices/{id}/preview", preview)
         .route("/v1/text-to-speech/{id}", speech.clone())
         .route("/v1/text-to-speech/{id}/stream", speech)
+        // The settings window's private routes. Merged here, before the
+        // layers below, so the host guard and the request log cover them too.
+        .merge(slc::routes::<S, Y>())
         .fallback(route_not_found)
         .method_not_allowed_fallback(method_not_allowed)
         // Layers wrap everything added above them, and a later `.layer` is
@@ -181,17 +211,28 @@ fn validate_host(raw: &str, port: u16) -> Option<String> {
 
 /// Logs one line per request: method, path, status and time taken. Never
 /// headers (SLC sends its `xi-api-key` there) and never the query string.
+///
+/// The settings window polls its `/slc/` routes every second, so their
+/// successes log at debug, keeping the log readable. Their failures still
+/// log at warn.
 async fn request_log(request: Request, next: Next) -> Response {
     let method = request.method().clone();
     let path = request.uri().path().to_string();
     let started = Instant::now();
     let response = next.run(request).await;
-    tracing::info!(
-        %method,
-        path,
-        status = response.status().as_u16(),
-        ms = started.elapsed().as_millis() as u64,
-    );
+    let status = response.status().as_u16();
+    let ms = started.elapsed().as_millis() as u64;
+    // `tracing`'s macros fix their level when they compile, hence a
+    // separate call for each level.
+    if path.starts_with(slc::PREFIX) {
+        if status < 400 {
+            tracing::debug!(%method, path, status, ms);
+        } else {
+            tracing::warn!(%method, path, status, ms);
+        }
+    } else {
+        tracing::info!(%method, path, status, ms);
+    }
     response
 }
 

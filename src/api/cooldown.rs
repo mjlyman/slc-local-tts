@@ -31,7 +31,8 @@ impl LoadCooldown {
     }
 
     /// True if `archive` failed to load less than `LOAD_RETRY_AFTER` ago.
-    pub(crate) fn is_cooling(&self, archive: &'static Archive) -> bool {
+    /// Public so the integration tests can check it.
+    pub fn is_cooling(&self, archive: &'static Archive) -> bool {
         self.is_cooling_at(archive, Instant::now())
     }
 
@@ -50,6 +51,12 @@ impl LoadCooldown {
         if map.get(archive.stem) == Some(&at) {
             map.remove(archive.stem);
         }
+    }
+
+    /// Ends the cooldown for `archive`, whichever failure started it. Used
+    /// when its files are deleted: the next files are a fresh download.
+    pub(crate) fn clear(&self, archive: &'static Archive) {
+        self.lock().remove(archive.stem);
     }
 
     /// A panic can't leave the map half-updated, so a poisoned lock is safe.
@@ -128,5 +135,13 @@ mod tests {
 
         cooldown.clear_if(archive(), current);
         assert!(!cooldown.is_cooling_at(archive(), current));
+    }
+
+    #[test]
+    fn clear_ends_any_failure() {
+        let cooldown = LoadCooldown::default();
+        let at = cooldown.record(archive());
+        cooldown.clear(archive());
+        assert!(!cooldown.is_cooling_at(archive(), at));
     }
 }

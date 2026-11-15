@@ -1,23 +1,52 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <!--
   The Windows application manifest that build.rs embeds in every binary this
-  package links: slc-local-tts.exe and the unit- and integration-test
-  executables.
+  package links: slc-local-tts.exe, slc-local-tts-cli.exe and the unit- and
+  integration-test executables. Windows allows only one manifest per
+  program, so this file is still the only one: every entry the program needs
+  goes here, and nothing else in the build may add another.
 
-  Why it exists: espeak-ng (C) opens its data files through narrow `char*`
-  APIs (fopen and friends), and sherpa-onnx's C++ model loading very likely
-  does too (std::ifstream and similar). Windows decodes those bytes in the
-  process's ANSI code page, normally 1252 here, but Rust hands them UTF-8
-  paths. A data folder under a user name with accents,
-  such as C:\Users\Jürgen\AppData\Local\SLC-Local-TTS, then can't be found,
-  and every voice fails. `activeCodePage` makes the ANSI code page UTF-8
-  (Windows 10 version 1903 or newer), so those narrow APIs read UTF-8.
+  What each entry is for:
 
-  link.exe adds the UAC section (requestedExecutionLevel asInvoker) itself, so
-  this file doesn't repeat it. Windows allows only one manifest, so any later
-  entries (common controls, DPI) go in this file too.
+  - Common Controls 6 (the dependency below): message boxes, such as the
+    quit warning and error boxes, get the current themed buttons instead of
+    the flat Windows 95 look.
+
+  - requestedExecutionLevel asInvoker (trustInfo): the program runs with the
+    user's own rights and never asks for administrator rights. link.exe adds
+    the same section by default; stated here too, it merges with link.exe's
+    into one, and a test checks that it appears exactly once.
+
+  - supportedOS (compatibility): the program is written for Windows 10 and
+    11, so Windows doesn't apply fixes meant for older programs.
+
+  - activeCodePage UTF-8: espeak-ng (C) opens its data files through narrow
+    `char*` APIs (fopen and friends), and sherpa-onnx's C++ model loading
+    very likely does too (std::ifstream and similar). Windows decodes those
+    bytes in the process's ANSI code page, normally 1252 here, but Rust hands
+    them UTF-8 paths. A data folder under a user name with accents, such as
+    C:\Users\Jürgen\AppData\Local\SLC-Local-TTS, then can't be found, and
+    every voice fails. `activeCodePage` makes the ANSI code page UTF-8
+    (Windows 10 version 1903 or newer), so those narrow APIs read UTF-8.
+
+  - dpiAwareness PerMonitorV2, with dpiAware true/pm for older Windows 10:
+    the tray icon and the message boxes stay sharp at 150% and 200% display
+    scale, on every monitor, from the program's first instruction. Without
+    it Windows draws them small and then stretches them, which blurs them.
 -->
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0" xmlns:asmv3="urn:schemas-microsoft-com:asm.v3">
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls" version="6.0.0.0" processorArchitecture="*" publicKeyToken="6595b64144ccf1df" language="*"/>
+    </dependentAssembly>
+  </dependency>
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
   <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
     <application>
       <!-- Windows 10 and Windows 11. -->
@@ -27,6 +56,8 @@
   <asmv3:application>
     <asmv3:windowsSettings>
       <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
     </asmv3:windowsSettings>
   </asmv3:application>
 </assembly>

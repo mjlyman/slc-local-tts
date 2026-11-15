@@ -22,6 +22,8 @@ accepted = [
     "Unlicense",
     "GPL-3.0-or-later", # the project's own licence
     "bzip2-1.0.6", # keep notices, mark modified versions, no endorsement: extra terms GPLv3 section 7(b)-(d) allows
+    "OFL-1.1", # epaint_default_fonts (the settings window's fallback fonts): reviewed and approved by the maintainer
+    "Ubuntu-font-1.0", # epaint_default_fonts (the settings window's fallback fonts): reviewed and approved by the maintainer
 ]
 
 # Only the crates that end up in the Windows exe.

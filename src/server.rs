@@ -17,10 +17,11 @@ use std::time::Duration;
 use axum::ServiceExt;
 use axum::extract::Request;
 use tokio::net::TcpListener;
+use tokio::sync::watch;
 use tokio::time::MissedTickBehavior;
 
 use crate::api::cooldown::LoadCooldown;
-use crate::api::{ApiSettings, AppState, PREVIEW_BUDGET, SPEECH_BUDGET, app};
+use crate::api::{ApiSettings, AppInfo, AppState, PREVIEW_BUDGET, SPEECH_BUDGET, app};
 use crate::catalog;
 use crate::config::{Config, ConfigError};
 use crate::engine::Synthesizer;
@@ -29,9 +30,26 @@ use crate::frontend::espeak::{self, EspeakError};
 use crate::models::DiskStore;
 use crate::models::install::{self, HttpInstaller};
 use crate::paths::DataDir;
+use crate::status::Live;
+use crate::stop::StopSignal;
+use crate::update::{self, UpdateState};
 
 /// The state type the real server runs with.
-type RealState = AppState<DiskStore<HttpInstaller>, SherpaSynthesizer>;
+pub type ServerState = AppState<DiskStore<HttpInstaller>, SherpaSynthesizer>;
+
+/// What the program running the server tells it about itself, for the
+/// settings window's status.
+#[derive(Debug, Clone, Default)]
+pub struct ServerOptions {
+    /// The version this copy was just updated to: fill it from
+    /// `update::updated_to().map(str::to_owned)`.
+    pub updated_to: Option<String>,
+    /// True when this program can restart to install an update.
+    pub can_restart_to_update: bool,
+    /// The signal that stops this server: the same one the program waits
+    /// on, so "Restart and update now" can stop it.
+    pub stop: StopSignal,
+}
 
 /// How often the idle unloader looks for unused models.
 const UNLOAD_TICK: Duration = Duration::from_secs(60);
@@ -111,7 +129,7 @@ pub fn banner(version: &str, port: u16) -> String {
 pub struct Started {
     listener: TcpListener,
     port: u16,
-    state: Arc<RealState>,
+    state: Arc<ServerState>,
     idle_for: Duration,
 }
 
@@ -119,6 +137,18 @@ impl Started {
     /// The port the server is listening on.
     pub fn port(&self) -> u16 {
         self.port
+    }
+
+    /// The state the routes share, for code in the same process that shows
+    /// it, such as the tray. Another handle to the same `Arc`.
+    pub fn state(&self) -> Arc<ServerState> {
+        Arc::clone(&self.state)
+    }
+
+    /// A receiver that always holds the latest state of this run's update
+    /// check. Each call gives a new receiver of the same channel.
+    pub fn updates(&self) -> watch::Receiver<UpdateState> {
+        self.state.app_info.updates.clone()
     }
 
     /// Answers requests until `shutdown` resolves, then lets requests in
@@ -152,9 +182,13 @@ impl Started {
     }
 }
 
-/// Binds the port, then prepares the data folder and espeak data. Loads no
-/// models.
-pub async fn start(data: DataDir, config: Config) -> Result<Started, StartupError> {
+/// Binds the port, prepares the data folder and espeak data, then starts
+/// the update check in the background. Loads no models.
+pub async fn start(
+    data: DataDir,
+    config: Config,
+    options: ServerOptions,
+) -> Result<Started, StartupError> {
     // Bind before any cleanup.
     // A second copy started by mistake must stop before it touches any
     // files: its cleanup would delete the first copy's download in progress
@@ -184,10 +218,24 @@ pub async fn start(data: DataDir, config: Config) -> Result<Started, StartupErro
             logs: data.logs(),
         })??;
 
+    // Only now that `prepare` has returned. For its espeak check, `prepare`
+    // points TMP and TEMP at espeak's private folder, which that check
+    // empties. Velopack's update check may write temporary files and start
+    // other programs, and must never see that folder. Once `prepare` has
+    // returned, TMP and TEMP are back to normal.
+    let updates = update::spawn_check(&config);
+    let app_info = AppInfo {
+        version: env!("CARGO_PKG_VERSION"),
+        config: config.clone(),
+        updates,
+        updated_to: options.updated_to,
+        can_restart_to_update: options.can_restart_to_update,
+        stop: options.stop,
+    };
     Ok(Started {
         listener,
         port,
-        state: build_state(&data, &config, port),
+        state: build_state(&data, &config, port, app_info),
         idle_for: Duration::from_secs(config.idle_unload_minutes * 60),
     })
 }
@@ -264,18 +312,26 @@ fn prepare_models_dir(models: &Path) {
 
 /// The shared state for the real store and synthesizer. Building it loads
 /// nothing.
-fn build_state(data: &DataDir, config: &Config, port: u16) -> Arc<RealState> {
+fn build_state(data: &DataDir, config: &Config, port: u16, app_info: AppInfo) -> Arc<ServerState> {
+    let store = DiskStore::new(data.models(), HttpInstaller::new());
+    let live = Live::new(Some(data.slc_seen_marker()));
+    // Download progress and deletes change what the tray and the settings
+    // window show. The closure owns its own `Arc` handle to `live`.
+    let notify_live = Arc::clone(&live);
+    store.set_on_change(move || notify_live.notify());
     Arc::new(AppState {
-        store: DiskStore::new(data.models(), HttpInstaller::new()),
+        store,
         synth: Arc::new(SherpaSynthesizer::new(config)),
         synth_lock: Arc::new(tokio::sync::Mutex::new(())),
         load_cooldown: LoadCooldown::default(),
+        live,
         settings: ApiSettings {
             port,
             speech_budget: SPEECH_BUDGET,
             preview_budget: PREVIEW_BUDGET,
             base_speed: config.base_speed.clone(),
         },
+        app_info,
     })
 }
 
@@ -324,7 +380,7 @@ async fn idle_unloader<Y: Synthesizer>(
 mod tests {
     use super::*;
     use crate::audio::Audio;
-    use crate::catalog::Voice;
+    use crate::catalog::{Archive, Voice};
     use crate::config::LogLevel;
     use crate::engine::{CancelFlag, Prepared, SynthError, SynthJob};
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -366,7 +422,13 @@ mod tests {
         std::fs::write(&root, "a file, not a folder").unwrap();
         let data = DataDir::at(root.clone());
 
-        assert!(crate::logging::init(&data.logs(), LogLevel::Info, false).is_err());
+        let result = crate::logging::init(
+            &data.logs(),
+            crate::logging::SERVER_LOG_PREFIX,
+            LogLevel::Info,
+            crate::logging::ConsoleLog::Off,
+        );
+        assert!(result.is_err());
 
         let text = StartupError::DataDirNotWritable { path: root.clone() }.to_string();
         assert!(text.contains(&root.display().to_string()), "{text}");
@@ -409,6 +471,19 @@ mod tests {
         );
     }
 
+    /// An `AppInfo` with no update support, like a build that wasn't
+    /// installed with Setup.exe.
+    fn test_app_info(config: &Config) -> AppInfo {
+        AppInfo {
+            version: "0.0.0-test",
+            config: config.clone(),
+            updates: watch::channel(UpdateState::NotInstalled).1,
+            updated_to: None,
+            can_restart_to_update: false,
+            stop: StopSignal::new(),
+        }
+    }
+
     #[tokio::test]
     async fn serve_returns_ok_when_shutdown_resolves() {
         let tmp = tempfile::tempdir().unwrap();
@@ -419,7 +494,7 @@ mod tests {
         let started = Started {
             listener,
             port,
-            state: build_state(&data, &config, port),
+            state: build_state(&data, &config, port, test_app_info(&config)),
             idle_for: Duration::from_secs(600),
         };
         let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
@@ -457,6 +532,9 @@ mod tests {
         fn unload_idle(&self, _: Duration) -> usize {
             self.0.fetch_add(1, Ordering::SeqCst);
             0
+        }
+        fn unload(&self, _: &'static Archive) -> bool {
+            false
         }
     }
 

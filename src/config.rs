@@ -151,7 +151,8 @@ fn check_speed(field: &'static str, value: f32) -> Result<(), ConfigError> {
     }
 }
 
-fn validate(c: &Config) -> Result<(), ConfigError> {
+/// Checks that every setting in `c` is inside its range.
+pub fn validate(c: &Config) -> Result<(), ConfigError> {
     check_int("port", c.port.into(), 1, 65535)?;
     check_int("num_threads", c.num_threads.into(), 1, 8)?;
     // u64 may not fit in i64; saturate so huge values still read as out of range.

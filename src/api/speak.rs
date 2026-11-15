@@ -8,12 +8,12 @@
 use std::any::Any;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use axum::Json;
 use axum::extract::rejection::JsonRejection;
 use axum::extract::{Path, State};
-use axum::http::{HeaderValue, StatusCode, header};
+use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 use tokio::time::{Instant, timeout_at};
@@ -21,11 +21,14 @@ use tokio::time::{Instant, timeout_at};
 use super::AppState;
 use super::cooldown::on_load_failure;
 use super::error::{AppError, BudgetPhase, degraded, silent_ok, speech_failure};
+use super::slc::{CLIENT_HEADER, CLIENT_VALUE};
 use crate::audio::{apply_gain_and_limit, encode_wav, engine_gain};
 use crate::catalog::{self, Voice};
-use crate::engine::{CancelFlag, SynthError, SynthJob, Synthesizer, engine_speed};
+use crate::engine::{CancelFlag, Prepared, SynthError, SynthJob, Synthesizer, engine_speed};
 use crate::frontend::text::{self, MAX_TEXT_CHARS};
 use crate::models::ModelStore;
+use crate::status::records::{RequestRecord, Route};
+use crate::status::unix_ms;
 
 /// What every preview says.
 pub const PREVIEW_TEXT: &str =
@@ -61,7 +64,8 @@ impl Drop for CancelOnDrop {
 
 /// What a successful pipeline produced.
 enum Spoken {
-    Wav(Vec<u8>),
+    /// The encoded WAV and how many seconds of audio it holds.
+    Wav { wav: Vec<u8>, seconds: f32 },
     /// Nothing speakable in the text: 0.2 s of silence, no error header.
     Silent,
 }
@@ -69,8 +73,15 @@ enum Spoken {
 impl Spoken {
     fn outcome(&self) -> &'static str {
         match self {
-            Spoken::Wav(_) => "spoken",
+            Spoken::Wav { .. } => "spoken",
             Spoken::Silent => "silent",
+        }
+    }
+
+    fn audio_seconds(&self) -> Option<f32> {
+        match self {
+            Spoken::Wav { seconds, .. } => Some(*seconds),
+            Spoken::Silent => None,
         }
     }
 }
@@ -78,7 +89,7 @@ impl Spoken {
 impl IntoResponse for Spoken {
     fn into_response(self) -> Response {
         match self {
-            Spoken::Wav(wav) => {
+            Spoken::Wav { wav, .. } => {
                 let mut resp = (StatusCode::OK, wav).into_response();
                 resp.headers_mut()
                     .insert(header::CONTENT_TYPE, HeaderValue::from_static("audio/wav"));
@@ -99,7 +110,15 @@ pub async fn speak<S: ModelStore, Y: Synthesizer>(
     let result = match validate(body) {
         Ok((text, speed)) => {
             let budget = state.settings.speech_budget;
-            speak_pipeline(&state, &voice_id, &text, speed, budget).await
+            let request = Pipeline {
+                route: Route::Speech,
+                from_slc: true,
+                voice_id: &voice_id,
+                text: &text,
+                slc_speed: speed,
+                budget,
+            };
+            speak_pipeline(&state, request).await
         }
         Err(err) => Err(err),
     };
@@ -107,12 +126,27 @@ pub async fn speak<S: ModelStore, Y: Synthesizer>(
 }
 
 /// The preview handler: fixed text at the engine's base speed.
+///
+/// The settings window's Play button uses this route too, with the window's
+/// client header. Its previews are recorded like any other, but they aren't
+/// SLC's: they don't set the last request time or the connected marker.
 pub async fn preview<S: ModelStore, Y: Synthesizer>(
     State(state): State<Arc<AppState<S, Y>>>,
     Path(voice_id): Path<String>,
+    headers: HeaderMap,
 ) -> Response {
-    let budget = state.settings.preview_budget;
-    speak_pipeline(&state, &voice_id, PREVIEW_TEXT, None, budget)
+    let from_window = headers
+        .get(CLIENT_HEADER)
+        .is_some_and(|value| value.as_bytes() == CLIENT_VALUE.as_bytes());
+    let request = Pipeline {
+        route: Route::Preview,
+        from_slc: !from_window,
+        voice_id: &voice_id,
+        text: PREVIEW_TEXT,
+        slc_speed: None,
+        budget: state.settings.preview_budget,
+    };
+    speak_pipeline(&state, request)
         .await
         .unwrap_or_else(|err| degraded(&err, &voice_id))
 }
@@ -166,17 +200,44 @@ fn validate(
     Ok((request.text, speed))
 }
 
-/// Text in, WAV out, within `budget` of the request's arrival. `slc_speed`
-/// stays `f64` up to the log line, so the log shows SLC's value exactly
-/// (`0.85`, not the `f32` rounding `0.8500000238418579`).
-async fn speak_pipeline<S: ModelStore, Y: Synthesizer>(
-    state: &Arc<AppState<S, Y>>,
-    voice_id: &str,
-    text: &str,
+/// One request for [`speak_pipeline`]. The `'a` lifetime says the struct
+/// only borrows its strings from the handler that builds it.
+struct Pipeline<'a> {
+    route: Route,
+    /// False for the settings window's own previews.
+    from_slc: bool,
+    voice_id: &'a str,
+    text: &'a str,
+    /// Stays `f64` up to the log line, so the log shows SLC's value exactly
+    /// (`0.85`, not the `f32` rounding `0.8500000238418579`).
     slc_speed: Option<f64>,
     budget: Duration,
+}
+
+/// Text in, WAV out, within `budget` of the request's arrival.
+///
+/// Every request that gets here ends in one log line and one request
+/// record. Requests rejected before the pipeline (malformed bodies) get
+/// neither a record nor a "last request" time.
+async fn speak_pipeline<S: ModelStore, Y: Synthesizer>(
+    state: &Arc<AppState<S, Y>>,
+    request: Pipeline<'_>,
 ) -> Result<Response, AppError> {
+    let Pipeline {
+        route,
+        from_slc,
+        voice_id,
+        text,
+        slc_speed,
+        budget,
+    } = request;
     let arrived = Instant::now();
+    // The wall-clock time too: `Instant` measures durations but can't be
+    // shown to the user as a time of day.
+    let arrived_at = SystemTime::now();
+    if from_slc {
+        state.live.request_arrived(arrived_at);
+    }
     let cancel = CancelFlag::default();
     // Lives until this function returns or its future is dropped.
     let _cancel_on_drop = CancelOnDrop(cancel.clone());
@@ -195,6 +256,11 @@ async fn speak_pipeline<S: ModelStore, Y: Synthesizer>(
         }
     };
 
+    let outcome = match &result {
+        Ok(spoken) => spoken.outcome(),
+        Err(err) => err.code(),
+    };
+    let ms = arrived.elapsed().as_millis() as u64;
     tracing::info!(
         voice = voice_id,
         chars = text.chars().count(),
@@ -202,12 +268,27 @@ async fn speak_pipeline<S: ModelStore, Y: Synthesizer>(
         // SLC's speed as it sent it. An `Option` field is left out of the
         // line when it's `None`: previews, and SLC requests without a speed.
         speed = slc_speed,
-        outcome = match &result {
-            Ok(spoken) => spoken.outcome(),
-            Err(err) => err.code(),
-        },
-        ms = arrived.elapsed().as_millis() as u64,
+        outcome,
+        ms,
     );
+    let error = result.as_ref().err();
+    state.live.record(RequestRecord {
+        // `Live::record` assigns the real number.
+        seq: 0,
+        at_ms: unix_ms(arrived_at),
+        route,
+        voice_id: voice_id.to_string(),
+        text: text::clean(text),
+        outcome: outcome.to_string(),
+        phase: match error {
+            Some(AppError::BudgetExceeded(phase)) => Some(*phase),
+            _ => None,
+        },
+        reason: error.and_then(AppError::reason).map(str::to_string),
+        message: error.map(AppError::message),
+        audio_seconds: result.as_ref().ok().and_then(Spoken::audio_seconds),
+        ms,
+    });
     result.map(Spoken::into_response)
 }
 
@@ -224,8 +305,55 @@ async fn speak_voice<S: ModelStore, Y: Synthesizer>(
         return Ok(Spoken::Silent);
     };
 
+    let mut model_dir = wait_for_model(state, voice, deadline, cancel).await?;
+    let speed = engine_speed(voice.engine, &state.settings.base_speed, slc_speed);
+    // Counted now: `text` moves into the blocking task that prepares it.
+    let chars = text.chars().count();
+    let mut prepared = match timeout_at(deadline, prepare(state, voice, text)).await {
+        Err(_elapsed) => {
+            cancel.cancel();
+            return Err(AppError::BudgetExceeded(BudgetPhase::Speaking));
+        }
+        Ok(Ok(Some(prepared))) => prepared,
+        Ok(Ok(None)) => return Ok(Spoken::Silent),
+        Ok(Err(err)) => return Err(err),
+    };
+
+    let mut downloaded_again = false;
+    loop {
+        let work = synthesize(state, voice, model_dir, prepared, speed, chars, cancel);
+        match timeout_at(deadline, work).await {
+            Err(_elapsed) => {
+                cancel.cancel();
+                return Err(AppError::BudgetExceeded(BudgetPhase::Speaking));
+            }
+            Ok(Ok(Synthesized::Spoken(spoken))) => return Ok(spoken),
+            Ok(Err(err)) => return Err(err),
+            // The voice was deleted while this request waited for the lock.
+            // Fetch it again once, within the same budget. A second delete
+            // in that time is too unlikely to be worth another round.
+            Ok(Ok(Synthesized::FilesGone(_))) if downloaded_again => {
+                return Err(AppError::BudgetExceeded(BudgetPhase::Downloading));
+            }
+            Ok(Ok(Synthesized::FilesGone(back))) => {
+                downloaded_again = true;
+                prepared = back;
+                model_dir = wait_for_model(state, voice, deadline, cancel).await?;
+            }
+        }
+    }
+}
+
+/// Waits (within the budget) for `voice`'s model folder, downloading it if
+/// needed, and refuses a model that recently failed to load.
+async fn wait_for_model<S: ModelStore, Y: Synthesizer>(
+    state: &Arc<AppState<S, Y>>,
+    voice: &'static Voice,
+    deadline: Instant,
+    cancel: &CancelFlag,
+) -> Result<PathBuf, AppError> {
     // Two timeouts against one deadline tell us which phase ran out of
-    // time: the first covers only the download, the second everything after.
+    // time: this one covers only the download, the later ones the rest.
     let model_dir = match timeout_at(deadline, state.store.ensure_installed(voice.archive)).await {
         Err(_elapsed) => {
             cancel.cancel();
@@ -234,34 +362,22 @@ async fn speak_voice<S: ModelStore, Y: Synthesizer>(
         Ok(Err(err)) => return Err(AppError::ModelDownloadFailed(err.reason)),
         Ok(Ok(dir)) => dir,
     };
-
     // Checked after `ensure_installed`, so a re-download of quarantined
     // files can start; only loading the model is held back.
     if state.load_cooldown.is_cooling(voice.archive) {
         return Err(load_failed_error());
     }
-
-    let speed = engine_speed(voice.engine, &state.settings.base_speed, slc_speed);
-    let work = synthesize(state, voice, model_dir, text, speed, cancel);
-    match timeout_at(deadline, work).await {
-        Err(_elapsed) => {
-            cancel.cancel();
-            Err(AppError::BudgetExceeded(BudgetPhase::Speaking))
-        }
-        Ok(result) => result,
-    }
+    Ok(model_dir)
 }
 
-/// Prepares the text and synthesizes it, one synthesis at a time.
-async fn synthesize<S: ModelStore, Y: Synthesizer>(
+/// Gets the text ready for the engine on a blocking thread. `None` means
+/// there is nothing to say.
+async fn prepare<S: ModelStore, Y: Synthesizer>(
     state: &Arc<AppState<S, Y>>,
     voice: &'static Voice,
-    model_dir: PathBuf,
     text: String,
-    speed: f32,
-    cancel: &CancelFlag,
-) -> Result<Spoken, AppError> {
-    // `spawn_blocking` needs owned (`'static`) data, so each closure gets
+) -> Result<Option<Prepared>, AppError> {
+    // `spawn_blocking` needs owned (`'static`) data, so the closure gets
     // its own `Arc` handle to the shared state.
     let task_state = Arc::clone(state);
     let prepared = tokio::task::spawn_blocking(move || {
@@ -272,13 +388,32 @@ async fn synthesize<S: ModelStore, Y: Synthesizer>(
         result
     })
     .await;
-    let prepared = match prepared {
-        Ok(Ok(prepared)) => prepared,
-        Ok(Err(SynthError::NothingToSay)) => return Ok(Spoken::Silent),
-        Ok(Err(err)) => return Err(synth_error(err)),
-        Err(join_error) => return Err(crashed(join_error)),
-    };
+    match prepared {
+        Ok(Ok(prepared)) => Ok(Some(prepared)),
+        Ok(Err(SynthError::NothingToSay)) => Ok(None),
+        Ok(Err(err)) => Err(synth_error(err)),
+        Err(join_error) => Err(crashed(join_error)),
+    }
+}
 
+/// What [`synthesize`] did.
+enum Synthesized {
+    Spoken(Spoken),
+    /// The model's files were deleted while the request waited for the
+    /// synthesis lock. Hands the prepared input back for the next try.
+    FilesGone(Prepared),
+}
+
+/// Synthesizes the prepared input, one synthesis at a time.
+async fn synthesize<S: ModelStore, Y: Synthesizer>(
+    state: &Arc<AppState<S, Y>>,
+    voice: &'static Voice,
+    model_dir: PathBuf,
+    prepared: Prepared,
+    speed: f32,
+    chars: usize,
+    cancel: &CancelFlag,
+) -> Result<Synthesized, AppError> {
     // `lock_owned` gives a guard that owns an `Arc` of the mutex instead of
     // borrowing it, so the guard can be moved into the blocking task below.
     let guard = Arc::clone(&state.synth_lock).lock_owned().await;
@@ -287,6 +422,13 @@ async fn synthesize<S: ModelStore, Y: Synthesizer>(
     if state.load_cooldown.is_cooling(voice.archive) {
         drop(guard);
         return Err(load_failed_error());
+    }
+    // And the voice may have been deleted from the settings window while
+    // this request waited. Loading files that are gone would fail and start
+    // the 5-minute load cooldown, so the caller downloads it again instead.
+    if !state.store.is_installed(voice.archive) {
+        drop(guard);
+        return Ok(Synthesized::FilesGone(prepared));
     }
     let task_state = Arc::clone(state);
     let job = SynthJob {
@@ -302,6 +444,10 @@ async fn synthesize<S: ModelStore, Y: Synthesizer>(
     // is released only when that work really ends.
     let result = tokio::task::spawn_blocking(move || {
         let _guard = guard;
+        // Held next to the lock, so the status shows "speaking" for exactly
+        // as long as the native work runs, even after a hang-up. Locals drop
+        // in reverse order, so "speaking" clears just before the lock frees.
+        let _speaking = task_state.live.start_speaking(voice.id, chars);
         let result = task_state.synth.synthesize(job, task_cancel);
         // Still under the lock: a request queued behind this one checks the
         // cooldown once it gets the lock, so it must already be recorded.
@@ -315,12 +461,15 @@ async fn synthesize<S: ModelStore, Y: Synthesizer>(
 
     let mut audio = match result {
         Ok(Ok(audio)) => audio,
-        Ok(Err(SynthError::NothingToSay)) => return Ok(Spoken::Silent),
+        Ok(Err(SynthError::NothingToSay)) => return Ok(Synthesized::Spoken(Spoken::Silent)),
         Ok(Err(err)) => return Err(synth_error(err)),
         Err(join_error) => return Err(crashed(join_error)),
     };
     apply_gain_and_limit(&mut audio.samples, engine_gain(voice.engine));
-    Ok(Spoken::Wav(encode_wav(&audio)))
+    Ok(Synthesized::Spoken(Spoken::Wav {
+        wav: encode_wav(&audio),
+        seconds: audio.samples.len() as f32 / audio.sample_rate as f32,
+    }))
 }
 
 /// Maps a synthesizer error to the HTTP error. Load failures have already
@@ -338,8 +487,8 @@ fn synth_error(err: SynthError) -> AppError {
 
 fn load_failed_error() -> AppError {
     AppError::ModelLoadFailed(
-        "the voice files could not be opened; if this keeps happening, delete the voice's \
-         folder under models\\ and it will download again"
+        "the files may be damaged; if this keeps happening, delete the voice on the Voices \
+         page (or its folder under models\\) so it downloads again"
             .to_string(),
     )
 }
@@ -348,4 +497,21 @@ fn load_failed_error() -> AppError {
 fn crashed(join_error: tokio::task::JoinError) -> AppError {
     tracing::error!(error = %join_error, "the speech engine crashed");
     AppError::SynthesisFailed("the speech engine crashed".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn load_failure_reason_reads_once() {
+        // The log line and the window's Activity page both put this reason
+        // after their own "couldn't be opened"/"could not be loaded", so it
+        // mustn't say that again.
+        assert_eq!(
+            load_failed_error().message(),
+            "could not be loaded: the files may be damaged; if this keeps happening, delete \
+             the voice on the Voices page (or its folder under models\\) so it downloads again."
+        );
+    }
 }

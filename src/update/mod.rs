@@ -3,6 +3,7 @@
 
 mod check;
 mod reinstall;
+mod uninstall;
 mod velopack_updater;
 
 use std::sync::OnceLock;
@@ -18,7 +19,8 @@ pub use velopack_updater::{FEED_ENV, REPO_URL};
 
 /// The version Velopack just updated us to, set by the `on_restarted` hook.
 /// A `OnceLock` is a static that can be written once, at run time, and read
-/// from any thread afterwards; `serve` reads it to print a note.
+/// from any thread afterwards; the server's startup reads it to log a
+/// note, and the Status page shows one.
 static UPDATED_TO: OnceLock<String> = OnceLock::new();
 
 /// Velopack's startup handler, set up for this app. `main` calls `.run()` on
@@ -27,17 +29,19 @@ static UPDATED_TO: OnceLock<String> = OnceLock::new();
 /// - **Automatic apply is off.** Velopack's default applies any newer
 ///   downloaded update at once, in whichever copy of the exe starts,
 ///   including a `voices` or `download` started mid-flight. Instead, only
-///   `serve` applies one, at startup.
+///   the tray program installs one: when it starts, or when the user picks
+///   "Restart and update now". The console program never does.
 /// - **The install hook keeps a repair or reinstall from deleting the
 ///   user's voices and settings** (`reinstall`).
 /// - **After an update,** the restarted copy records its new version for
 ///   `updated_to`.
-///
-/// An uninstall callback, when one is needed, goes here too.
+/// - **The uninstall hook removes the start-with-Windows entry**
+///   (`uninstall`), so Windows doesn't try to start a program that's gone.
 pub fn hooks() -> VelopackApp<'static> {
     VelopackApp::build()
         .set_auto_apply_on_startup(false)
         .on_after_install_fast_callback(|_| reinstall::keep_user_data())
+        .on_before_uninstall_fast_callback(|_| uninstall::before_uninstall())
         .on_restarted(|version| {
             // `set` fails only if the value is already set; the hook runs
             // once per process, so there is nothing to handle.
@@ -51,7 +55,7 @@ pub fn updated_to() -> Option<&'static str> {
     UPDATED_TO.get().map(String::as_str)
 }
 
-/// The line `serve` prints after an update.
+/// The note logged (and printed by the console program) after an update.
 pub fn updated_note(version: &str) -> String {
     format!("SLC Local TTS updated itself to {version}.")
 }
@@ -68,7 +72,8 @@ pub enum UpdateState {
     /// Nothing newer. Also the value while the check is still running.
     UpToDate,
     Downloading,
-    /// Downloaded; it installs the next time `serve` starts.
+    /// Downloaded; it installs the next time the tray program starts, or
+    /// at "Restart and update now".
     Ready {
         version: String,
     },
@@ -84,6 +89,13 @@ pub enum UpdateError {
     NotInstalled,
     #[error("the update server couldn't be reached ({0})")]
     Network(String),
+    /// GitHub refused the check because this network asked too often.
+    #[error("GitHub is limiting update checks from this network for now")]
+    RateLimited,
+    /// The installation is there but couldn't be opened, for example
+    /// because it's damaged.
+    #[error("the installation couldn't be read ({0})")]
+    Unreadable(String),
     #[error("the downloaded update was damaged ({0})")]
     Damaged(String),
     #[error("{0}")]
@@ -105,10 +117,19 @@ pub fn spawn_check(config: &Config) -> watch::Receiver<UpdateState> {
 /// the caller must return from `main` promptly: the updater gives up after
 /// 60 s.
 pub fn apply_pending_and_restart() -> Result<bool, UpdateError> {
+    apply_pending_and_restart_after(|| {})
+}
+
+/// [`apply_pending_and_restart`], calling `prepare` first when there is an
+/// update to install, and only then. The tray program uses it to close an
+/// open settings window, which runs from the folder the update replaces.
+pub fn apply_pending_and_restart_after(prepare: impl FnOnce()) -> Result<bool, UpdateError> {
     match VelopackUpdater::from_env() {
         Err(UpdateError::NotInstalled) => Ok(false),
-        Err(e) => Err(e),
-        Ok(updater) => check::apply_pending(&updater),
+        // Something is installed but couldn't be opened, which says more
+        // than the raw error alone.
+        Err(e) => Err(UpdateError::Unreadable(e.to_string())),
+        Ok(updater) => check::apply_pending(&updater, prepare),
     }
 }
 

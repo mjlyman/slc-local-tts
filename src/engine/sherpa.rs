@@ -12,7 +12,7 @@ use sherpa_onnx::{
 use super::cache::ModelCache;
 use super::{CancelFlag, Prepared, SynthError, SynthJob, Synthesizer};
 use crate::audio::Audio;
-use crate::catalog::{Engine, Voice};
+use crate::catalog::{Archive, Engine, Voice};
 use crate::config::Config;
 use crate::frontend::espeak;
 
@@ -153,6 +153,11 @@ impl Synthesizer for SherpaSynthesizer {
 
     fn unload_idle(&self, idle_for: Duration) -> usize {
         self.cache.unload_idle(Instant::now(), idle_for)
+    }
+
+    fn unload(&self, archive: &'static Archive) -> bool {
+        // The cache is keyed by archive stem, like in `synthesize`.
+        self.cache.remove(archive.stem)
     }
 }
 

@@ -5,7 +5,7 @@
 //! the others.
 #![allow(dead_code)]
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -18,12 +18,18 @@ use tower::ServiceExt;
 use tower_http::normalize_path::NormalizePath;
 
 use slc_local_tts::api::cooldown::LoadCooldown;
-use slc_local_tts::api::{ApiSettings, AppState, app};
+use slc_local_tts::api::slc::{CLIENT_HEADER, CLIENT_VALUE};
+use slc_local_tts::api::{ApiSettings, AppInfo, AppState, app};
 use slc_local_tts::audio::Audio;
 use slc_local_tts::catalog::{Archive, Voice};
-use slc_local_tts::config::BaseSpeeds;
+use slc_local_tts::config::{BaseSpeeds, Config};
 use slc_local_tts::engine::{CancelFlag, Prepared, SynthError, SynthJob, Synthesizer};
-use slc_local_tts::models::{LoadRecovery, ModelStore, StoreError};
+use slc_local_tts::models::{
+    DeleteError, LoadRecovery, ModelState, ModelStore, StartDownload, StoreError,
+};
+use slc_local_tts::status::Live;
+use slc_local_tts::stop::StopSignal;
+use slc_local_tts::update::UpdateState;
 
 /// The port every test state pretends to be bound to.
 pub const PORT: u16 = 8765;
@@ -50,6 +56,18 @@ pub struct FakeStore {
     pub recovery: Option<LoadRecovery>,
     /// How many of the next `ensure_installed` calls panic (counts down).
     pub panic_times: AtomicUsize,
+    /// Extra time `ensure_installed` takes when the archive isn't installed
+    /// yet, like a real download. Added after `delay`.
+    pub download_delay: Duration,
+    /// What `state` answers for these stems. Any other stem is `Installed`
+    /// or `NotInstalled`, from `installed`.
+    pub states: Mutex<HashMap<&'static str, ModelState>>,
+    /// What `start_download` returns; `None` means `Started`.
+    pub start_result: Option<StartDownload>,
+    pub start_calls: AtomicUsize,
+    /// If set, `delete` fails with this; otherwise it uninstalls the archive.
+    pub delete_error: Option<DeleteError>,
+    pub delete_calls: AtomicUsize,
 }
 
 impl FakeStore {
@@ -71,7 +89,11 @@ impl ModelStore for FakeStore {
         if take_one(&self.panic_times) {
             panic!("FakeStore was told to panic");
         }
+        let was_installed = self.is_installed(archive);
         tokio::time::sleep(self.delay).await;
+        if !was_installed {
+            tokio::time::sleep(self.download_delay).await;
+        }
         if let Some(reason) = &self.fail_with {
             return Err(StoreError {
                 reason: reason.clone(),
@@ -84,6 +106,32 @@ impl ModelStore for FakeStore {
     fn report_load_failure(&self, _archive: &'static Archive) -> LoadRecovery {
         self.load_failure_reports.fetch_add(1, Ordering::SeqCst);
         self.recovery.unwrap_or(LoadRecovery::FilesOk)
+    }
+
+    fn state(&self, archive: &'static Archive) -> ModelState {
+        if let Some(state) = self.states.lock().unwrap().get(archive.stem) {
+            return state.clone();
+        }
+        if self.is_installed(archive) {
+            ModelState::Installed
+        } else {
+            ModelState::NotInstalled
+        }
+    }
+
+    fn start_download(&self, _archive: &'static Archive) -> StartDownload {
+        self.start_calls.fetch_add(1, Ordering::SeqCst);
+        self.start_result.clone().unwrap_or(StartDownload::Started)
+    }
+
+    fn delete(&self, archive: &'static Archive) -> Result<(), DeleteError> {
+        self.delete_calls.fetch_add(1, Ordering::SeqCst);
+        if let Some(err) = &self.delete_error {
+            return Err(err.clone());
+        }
+        self.installed.lock().unwrap().remove(archive.stem);
+        self.states.lock().unwrap().remove(archive.stem);
+        Ok(())
     }
 }
 
@@ -122,6 +170,8 @@ pub struct FakeSynth {
     pub calls: Mutex<Vec<SynthCall>>,
     pub current: AtomicUsize,
     pub max_concurrent: AtomicUsize,
+    /// The archive stems `unload` was called for, in order.
+    pub unloads: Mutex<Vec<&'static str>>,
 }
 
 impl Default for FakeSynth {
@@ -138,6 +188,7 @@ impl Default for FakeSynth {
             calls: Mutex::new(Vec::new()),
             current: AtomicUsize::new(0),
             max_concurrent: AtomicUsize::new(0),
+            unloads: Mutex::new(Vec::new()),
         }
     }
 }
@@ -179,6 +230,11 @@ impl Synthesizer for FakeSynth {
     fn unload_idle(&self, _idle_for: Duration) -> usize {
         0
     }
+
+    fn unload(&self, archive: &'static Archive) -> bool {
+        self.unloads.lock().unwrap().push(archive.stem);
+        true
+    }
 }
 
 // ---------------------------------------------------------------- state
@@ -208,13 +264,45 @@ pub fn state_with_budgets(
         synth: Arc::new(synth),
         synth_lock: Arc::new(tokio::sync::Mutex::new(())),
         load_cooldown: LoadCooldown::default(),
+        live: Live::new(None),
         settings: ApiSettings {
             port: PORT,
             speech_budget: Duration::from_millis(speech_ms),
             preview_budget: Duration::from_millis(preview_ms),
             base_speed: BaseSpeeds::default(),
         },
+        app_info: test_app_info(),
     })
+}
+
+/// Default fakes and 2-second budgets, with `app_info` for the status and
+/// update routes.
+pub fn state_with_app_info(app_info: AppInfo) -> TestState {
+    let base = state(2_000);
+    // `state` returns a fresh `Arc` that nothing else holds yet, so it can
+    // be unwrapped to change one field.
+    let Ok(mut inner) = Arc::try_unwrap(base) else {
+        unreachable!("a fresh test state has one owner");
+    };
+    inner.app_info = app_info;
+    Arc::new(inner)
+}
+
+/// What the status route reports about the app in tests: version
+/// `0.0.0-test`, the default config, and no update support (a test build
+/// isn't installed with Setup.exe).
+pub fn test_app_info() -> AppInfo {
+    AppInfo {
+        version: "0.0.0-test",
+        config: Config::default(),
+        // A receiver whose sender is already gone still holds this value.
+        updates: tokio::sync::watch::channel(UpdateState::NotInstalled).1,
+        updated_to: None,
+        can_restart_to_update: false,
+        // Nothing waits on it in the API tests; a test that checks a stop
+        // passes in its own clone.
+        stop: StopSignal::new(),
+    }
 }
 
 /// The full app (router wrapped in trailing-slash normalization).
@@ -311,6 +399,34 @@ pub async fn post_json_with(
     send(app, builder.body(Body::from(body.to_string())).unwrap()).await
 }
 
+/// `GET uri` as the settings window sends it: the default `Host` and the
+/// client header.
+pub async fn slc_get(app: &NormalizePath<Router>, uri: &str) -> TestResponse {
+    get_with(app, uri, HOST, &[(CLIENT_HEADER, CLIENT_VALUE)]).await
+}
+
+/// `POST uri` with an empty body, as the settings window sends it.
+pub async fn slc_post(app: &NormalizePath<Router>, uri: &str) -> TestResponse {
+    slc_send(app, Request::post(uri)).await
+}
+
+/// `DELETE uri`, as the settings window sends it.
+pub async fn slc_delete(app: &NormalizePath<Router>, uri: &str) -> TestResponse {
+    slc_send(app, Request::delete(uri)).await
+}
+
+async fn slc_send(
+    app: &NormalizePath<Router>,
+    builder: axum::http::request::Builder,
+) -> TestResponse {
+    let request = builder
+        .header("host", HOST)
+        .header(CLIENT_HEADER, CLIENT_VALUE)
+        .body(Body::empty())
+        .unwrap();
+    send(app, request).await
+}
+
 // ---------------------------------------------------------------- logs
 
 /// Everything a capturing subscriber has written so far.
@@ -344,6 +460,12 @@ pub struct LogCapture {
 /// the current thread only, until the returned `LogCapture` is dropped. Use
 /// it in a `current_thread` test so the handlers run on this thread.
 pub fn capture_logs() -> (LogBuffer, LogCapture) {
+    capture_logs_at(tracing::Level::TRACE)
+}
+
+/// [`capture_logs`], recording only events at `level` and above, like a log
+/// file set to that level.
+pub fn capture_logs_at(level: tracing::Level) -> (LogBuffer, LogCapture) {
     // Seen with tracing-core 0.1.36 (callsite.rs, `Dispatchers::rebuilder`);
     // if this capture flakes after an upgrade, look here first.
     // With exactly one live dispatcher, tracing-core computes the interest
@@ -357,7 +479,7 @@ pub fn capture_logs() -> (LogBuffer, LogCapture) {
     let subscriber = tracing_subscriber::fmt()
         .with_writer(move || writer.clone())
         .with_ansi(false)
-        .with_max_level(tracing::Level::TRACE)
+        .with_max_level(level)
         .finish();
     let guard = tracing::subscriber::set_default(subscriber);
     (

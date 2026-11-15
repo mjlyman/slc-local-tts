@@ -3,7 +3,7 @@
 //! `include_str!` reads each file at compile time, so a missing file fails the
 //! build of this test, and a stale one fails an assertion.
 
-use slc_local_tts::{catalog, update};
+use slc_local_tts::{autostart, catalog, update};
 
 const VOICE_MODELS: &str = include_str!("../licenses/voice-models.txt");
 const NATIVE: &str = include_str!("../licenses/native.txt");
@@ -70,4 +70,12 @@ fn release_info_matches_the_code() {
         RELEASE_INFO.contains("$PackId = \"SLC-Local-TTS\""),
         "release-info.ps1 lacks the pack ID"
     );
+    // Velopack names the install folder's launcher after the pack title, and
+    // the start-with-Windows entry points at that launcher.
+    let title = RELEASE_INFO
+        .lines()
+        .find_map(|line| line.strip_prefix("$PackTitle = \""))
+        .and_then(|rest| rest.strip_suffix('"'))
+        .expect("release-info.ps1 lacks $PackTitle");
+    assert_eq!(format!("{title}.exe"), autostart::ROOT_STUB);
 }

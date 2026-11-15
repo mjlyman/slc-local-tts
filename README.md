@@ -20,7 +20,8 @@ You need 64-bit Windows 10 (version 1903 or later) or Windows 11.
 
 It installs for your Windows user only, without asking for administrator
 rights. It adds "SLC Local TTS" to the Start Menu (no desktop shortcut) and
-starts SLC Local TTS at once.
+starts SLC Local TTS at once. The first time, its window opens with a short
+note about where its icon is.
 
 **If you used an earlier copy of SLC Local TTS** (a plain
 `slc-local-tts.exe` you started yourself):
@@ -31,14 +32,53 @@ starts SLC Local TTS at once.
 3. From then on, start SLC Local TTS from the Start Menu. Stop using the
    old `slc-local-tts.exe`, or delete it: it never updates itself.
 
+### The taskbar icon and the window
+
+SLC Local TTS runs in the taskbar corner, as an icon next to the clock. If
+you can't see the icon, click **^** next to the clock. It keeps running
+while its window is closed, and SLC can use it the whole time. Quitting it
+from the icon stops the voices.
+
+- **Click the icon** to open the SLC Local TTS window.
+- **Right-click the icon** for its menu: **Open SLC Local TTS**, **Copy
+  SLC address**, **Start with Windows** and **Quit SLC Local TTS…**.
+- **The icon shows how things are.** Hold the mouse over it for a one-line
+  summary. A cyan down-arrow on it means a voice is downloading. An amber
+  dot means an announcement failed in the last hour, or a voice download
+  failed: click the icon and look at the Activity page, or the Voices page
+  for a failed download.
+- **Starting it again from the Start Menu** while it runs opens its window.
+  It never starts a second copy.
+
+The window has four pages:
+
+- **Status:** whether SLC Local TTS is ready, the address SLC needs (with a
+  Copy button), and the steps to connect SLC until SLC first connects,
+  then a bar for each announcement in the last hour.
+- **Voices:** every voice, whether it is installed, and buttons to play,
+  download and delete it.
+- **Activity:** each line SLC asked for since SLC Local TTS started. A
+  failed line says why it failed and what to do. Turn on **Problems only**
+  to see just the failures; **Open log folder** shows the older history.
+- **Settings:** start with Windows, update checks, CPU threads for speech,
+  the port, and the licences.
+
+Closing the window doesn't stop the voices.
+
 ### Quick start
 
-1. **Start SLC Local TTS before SLC, and keep its window open while you fly.**
-   SLC crashes when SLC Local TTS isn't there. Start it from the Start Menu.
-   The window shows the address to use. Closing it stops the voices.
+1. **Start SLC Local TTS before SLC.** SLC crashes when SLC Local TTS isn't
+   there. Start it from the Start Menu, or turn on **Start when Windows
+   starts** (in the note the window shows the first time, or on the
+   Settings page; the icon's menu has it as **Start with Windows**).
+   Starting with Windows is off unless you turn it on. Once it's on, SLC
+   Local TTS starts in the taskbar corner when you sign in, with no window
+   (unless it has just installed an update; see Updates below).
 2. In SLC's ElevenLabs settings, set the **Custom API URL** to
-   `http://127.0.0.1:8765` (no `/v1`, nothing after the port). SLC wants an
-   API key too; any text works, because SLC Local TTS ignores it.
+   `http://127.0.0.1:8765` (no `/v1`, nothing after the port). The Status
+   page shows this address with a Copy button, and **Copy SLC address** in
+   the icon's menu copies it too. SLC wants an API key as well; any text
+   works, because SLC Local TTS ignores it.
 3. Keep SLC's option **"Automatically Switch Back to 'Voicepack' if TTS
    generation fails"** turned on. SLC hasn't been tested with SLC Local TTS
    with that option off.
@@ -49,30 +89,40 @@ starts SLC Local TTS at once.
    first time it is used (about 70 to 350 MB), and a first download can take
    a few minutes. All Kokoro voices share one model, and so do all
    Supertonic voices: installing one of them installs them all. Do this on
-   the ground, in one of two ways:
+   the ground, in any of these ways:
+   - **On the Voices page** of the SLC Local TTS window: press the voice's
+     Download button and wait until it says **Installed**.
    - **Press the voice's preview button in SLC.** If the voice is already
      installed, the preview plays. If the preview stays silent, the voice is
-     still downloading: the SLC Local TTS window shows a line like
-     `Voice af_heart: is still downloading, so it was not ready in time. The
-     preview played silence. The download continues in the background; press
-     preview again in a minute or two.` Keep doing that until the preview
-     plays.
+     still downloading, and the icon shows its down-arrow. Press preview
+     again in a minute or two, until it plays.
    - **Or download it from a terminal** (see below).
 
    SLC waits at most 10 seconds for each announcement, and a voice that
    isn't installed yet can't download in that time. Its first lines get
    SLC's failure sound instead.
 
+### Quitting
+
+Right-click the icon and choose **Quit SLC Local TTS…**. It asks first,
+because SLC needs it for every announcement: while SLC is open, each
+announcement gets SLC's failure sound instead, and pressing a voice preview
+in SLC crashes SLC. The question says when SLC last asked for speech, so
+you can tell whether SLC is still flying. **No** is the default answer.
+
+Signing out of Windows or shutting down stops SLC Local TTS cleanly by
+itself.
+
 ### Downloading voices from a terminal
 
-This works whether or not SLC Local TTS is already running. These are
-PowerShell commands. Open PowerShell: right-click the Start button and
-choose **Terminal** or **Windows Terminal** (Windows 11), or **Windows
-PowerShell** (Windows 10).
+The Voices page is the easy way, but a terminal works too, whether or not
+SLC Local TTS is already running. These are PowerShell commands. Open
+PowerShell: right-click the Start button and choose **Terminal** or
+**Windows Terminal** (Windows 11), or **Windows PowerShell** (Windows 10).
 Then run:
 
 ```powershell
-& "$env:LOCALAPPDATA\SLC-Local-TTS\current\slc-local-tts.exe" download en_US-joe-medium
+& "$env:LOCALAPPDATA\SLC-Local-TTS\current\slc-local-tts-cli.exe" download en_US-joe-medium
 ```
 
 Put the voice you want in place of `en_US-joe-medium`. It says when the
@@ -83,37 +133,41 @@ installed.
 To list every voice, its engine, and whether it is installed:
 
 ```powershell
-& "$env:LOCALAPPDATA\SLC-Local-TTS\current\slc-local-tts.exe" voices
+& "$env:LOCALAPPDATA\SLC-Local-TTS\current\slc-local-tts-cli.exe" voices
 ```
+
+`slc-local-tts-cli.exe` is the console version of SLC Local TTS. Its
+`serve` command runs the server in a terminal window instead of the taskbar
+corner, until you press **Ctrl+C**. It never installs updates.
 
 ### If something goes wrong
 
 - **SLC plays a short failure sound instead of a line.** SLC Local TTS
-  couldn't speak that line in time. The console window says why, and so does
-  the log file in `%LocalAppData%\SLC-Local-TTS\logs\`. SLC doesn't keep the
-  failure, so it should ask again the next time that line comes up.
+  couldn't speak that line in time. The icon gets an amber dot, and the
+  Activity page says why that line failed and what to do. So does the log
+  file in `%LocalAppData%\SLC-Local-TTS\logs\`. SLC doesn't keep the
+  failure, so it should ask again the next time that line comes up. Most
+  often the voice wasn't installed yet. Install voices before flying: press
+  the voice's preview button in SLC, install it on the Voices page of the
+  SLC Local TTS window, or run `slc-local-tts-cli.exe download` with the
+  voice's ID (see above).
 - **Kokoro voices are slow on long announcements.** Lines longer than about
   390 characters may not finish in SLC's 10 seconds and get the failure
-  sound. Use a Piper or Supertonic voice for those, or raise `num_threads` in
-  `config.toml` (see below): faster speech, but more CPU taken from the sim.
-- **"SLC Local TTS is already running, so this copy won't start a second
-  one."** SLC Local TTS is already open, perhaps minimized or in another
-  window. Use that one; SLC can keep talking to it. Press Enter to close the
-  new window.
+  sound. Use a Piper or Supertonic voice for those, or raise **CPU threads
+  for speech** on the Settings page (`num_threads` in `config.toml`):
+  faster speech, but more CPU taken from the sim.
+- **"SLC Local TTS is already running in the taskbar corner."** The
+  terminal says this when you run `slc-local-tts-cli.exe serve` while SLC
+  Local TTS is already running. Use the running one; SLC can keep talking
+  to it.
 - **"Port 8765 is already in use".** Another program is using that port.
-  Close it, or choose another `port` in `config.toml` and use the same port
-  in SLC's Custom API URL.
+  Close it, or set a different `port` in `config.toml` and use the same
+  port in SLC's Custom API URL.
 - **You want SLC to say a line again with a different voice or setting.**
   SLC keeps every line it gets in its own audio cache. To clear it for one
   voice, use SLC's Cache Manager, or, with SLC closed, delete
   `C:\ProgramData\SLC\cache\perm_*-*-2-<voiceId>-*.mp3`, where `<voiceId>`
   is the voice's ID (for example `en_US-joe-medium` or `M1`).
-
-### Stopping
-
-Press **Ctrl+C** in the window. SLC Local TTS finishes the lines it is
-speaking (up to a minute for a preview that is still downloading) and then
-says "SLC Local TTS stopped". Press **Ctrl+C** again to quit at once.
 
 ### Updates
 
@@ -121,18 +175,24 @@ SLC Local TTS updates itself from GitHub:
 
 - Each time it starts, it checks for a new version and, if there is one,
   downloads it in the background. Your flight isn't affected.
-- When the download is done, the window says `Version X is ready. It
+- When the download is done, the Status page says `Version X is ready. It
   installs the next time SLC Local TTS starts, so it never interrupts a
   flight.` (with the real version number in place of X).
-- The next time you start SLC Local TTS, it says `Installing version X. SLC
-  Local TTS closes now and starts again by itself in a few seconds.` and
-  does that: its window closes, and a new one opens a few seconds later.
-  Wait for the new window to show the address before you start SLC. The
-  new window says `SLC Local TTS updated itself to X.`
-- If the check can't reach GitHub, the window says so in one line, and SLC
-  Local TTS keeps working as usual.
-- To turn update checks off, put `check_for_updates = false` in
-  `config.toml` (see below).
+- The next time you start SLC Local TTS, it installs the update by
+  itself. Its icon appears a few seconds later than usual, and then the
+  window opens and says `Updated to X.`, with a link to what's new. Wait
+  for the icon before you start SLC.
+- To install it sooner, press **Restart and update now…** on the Status
+  page, or choose **Restart to update to X…** in the icon's menu. It asks
+  first, because announcements SLC asks for while SLC Local TTS restarts
+  get its failure sound. Do this on the ground, not mid-flight. The icon
+  goes away for a few seconds and comes back on the new version, and the
+  window opens and says `Updated to X.`.
+- If the check can't reach GitHub, SLC Local TTS keeps working as usual,
+  and the log says why.
+- To turn update checks off, switch off **Check for updates** on the
+  Settings page. While it is off, an update that was already downloaded
+  isn't installed either.
 
 You don't need Setup.exe to update. If you run it again anyway, it says SLC
 Local TTS is already installed and offers **Repair**. A repair keeps your
@@ -144,33 +204,42 @@ this mid-flight.
 Open Windows **Settings**, then **Apps**, then find **SLC Local TTS** and
 choose **Uninstall**.
 
-This removes SLC Local TTS and is meant to delete the whole
-`%LocalAppData%\SLC-Local-TTS\` folder, including your voices, settings and
-logs. If that folder is still there afterwards, you can delete it yourself.
-To start fresh, uninstall, delete that folder if it's still there, then
-install again.
+This removes SLC Local TTS and its start-with-Windows entry, and deletes
+the whole `%LocalAppData%\SLC-Local-TTS\` folder, including your voices,
+settings and logs. If anything is left in that folder afterwards, you can
+delete it yourself.
 
 ### Where your files are
 
 Everything lives in `%LocalAppData%\SLC-Local-TTS\`:
 
-- `models\`: the downloaded voices. Delete a voice's folder to remove it; it
-  downloads again the next time it is used. Every Kokoro voice uses the one
-  `kokoro-multi-lang-v1_0` folder, and every Supertonic voice the one
-  `sherpa-onnx-supertonic-3-tts-int8-2026-05-11` folder, so deleting either
-  folder removes every voice of that engine.
-- `logs\`: one log file per day; the last 8 are kept.
+- `models\`: the downloaded voices. Delete a voice on the Voices page (or
+  its folder); it downloads again the next time it is used. Every Kokoro
+  voice uses the one `kokoro-multi-lang-v1_0` folder, and every Supertonic
+  voice the one `sherpa-onnx-supertonic-3-tts-int8-2026-05-11` folder, so
+  deleting either of those removes every voice of that engine.
+- `logs\`: the server's log, one file per day; the last 8 are kept.
+  `logs\window\` holds the window's own log, also one file per day, with
+  the last 8 kept.
 - `espeak\`: speech data SLC Local TTS unpacks for itself.
 - `config.toml`: your settings (optional, see below).
-- `current\`: the program itself, `slc-local-tts.exe`, with `LICENSE.txt`
-  and `THIRD_PARTY_NOTICES.txt` next to it. Each update replaces this
-  folder.
-- `Update.exe`, `packages\` and the rest: the installer's and updater's own
-  files. Leave them alone.
+- `slc-connected` and `tray-intro-shown`: small markers that remember that
+  SLC has connected and that you've seen the first-run note.
+- `current\`: the program itself, `slc-local-tts.exe` (the taskbar icon and
+  the window) and `slc-local-tts-cli.exe` (the console version), with
+  `LICENSE.txt` and `THIRD_PARTY_NOTICES.txt` next to them. Each update
+  replaces this folder.
+- `SLC Local TTS.exe`, `Update.exe`, `packages\` and the rest: the
+  installer's and updater's own files. The start-with-Windows entry
+  starts `SLC Local TTS.exe`, which starts the program in `current\`; the
+  Start Menu shortcut starts `current\slc-local-tts.exe` directly. Leave
+  them alone.
 
 ### Settings (`config.toml`)
 
-SLC Local TTS works without a settings file. To change something, create
+SLC Local TTS works without a settings file. The Settings page changes
+the common settings for you. For the rest, choose **Open config.toml for
+advanced settings** on the Settings page, or create
 `%LocalAppData%\SLC-Local-TTS\config.toml` with only the lines you want to
 change, then restart SLC Local TTS. If a line is wrong, SLC Local TTS says
 which one and doesn't start; fix or delete that line.
@@ -240,18 +309,38 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\fetch-native-libs.ps
 Then:
 
 ```powershell
-cargo build --release      # target\release\slc-local-tts.exe
-cargo test                 # unit, API and socket tests; no models needed
+cargo build --release      # target\release\slc-local-tts.exe and slc-local-tts-cli.exe
+cargo test                 # unit, API, socket and headless window tests; no models needed
 cargo test -- --ignored    # real-model tests: real downloads and synthesis
+```
+
+There are two programs. `slc-local-tts` is the taskbar icon and the window;
+`slc-local-tts-cli` is the console version, with `serve`, `voices` and
+`download`. `cargo run` needs to know which one:
+
+```powershell
+cargo run --bin slc-local-tts                # the taskbar icon
+cargo run --bin slc-local-tts-cli -- serve   # the server in this console
 ```
 
 `cargo test -- --ignored` downloads about 600 MB of models the first time.
 They go into `target\real-model-home\`, so later runs reuse them.
 
 `build.rs` embeds `windows\slc-local-tts.manifest` in every binary, the
-test executables included. It switches the process's code page to UTF-8,
-so espeak-ng and sherpa-onnx can open files under a Windows user name with
-accents.
+test executables included. Windows allows only one manifest per program,
+so every entry goes in that file. It switches the process's code page to
+UTF-8, so espeak-ng and sherpa-onnx can open files under a Windows user
+name with accents. It also asks for the current Common Controls, so the
+message boxes get themed buttons, and makes the program per-monitor DPI
+aware, so the tray icon and the message boxes stay sharp at 150% and 200%
+display scale.
+
+`assets\slc-local-tts.ico`, the programs' icon, is drawn by the same code
+as the tray icon. After changing that code, regenerate it with:
+
+```powershell
+cargo test --test icon_assets -- --ignored
+```
 
 ### The data folder
 
@@ -266,7 +355,9 @@ target\release\slc-local-tts.exe
 ```
 
 A copy that wasn't installed with Setup.exe (`cargo run`, or the exe in
-`target\`) never checks for or installs updates.
+`target\`) never checks for or installs updates. It can still turn on
+start with Windows from its window, and the entry then points at that
+build's exe: turn it off in the window before you delete that build.
 
 ### The voice catalog
 
@@ -339,9 +430,10 @@ the same version, delete that folder (or use a new one) first.
    & "$env:LOCALAPPDATA\SLC-Local-TTS\current\slc-local-tts.exe"
    ```
 
-   It downloads the new version. When it says `Version X is ready`, press
-   Ctrl+C, then start it again to install it. Afterwards, clear the variable with
-   `Remove-Item Env:SLC_LOCAL_TTS_UPDATE_FEED`, or close that terminal.
+   It downloads the new version. When the Status page says `Version X is
+   ready`, press **Restart and update now…** to install it. Afterwards,
+   clear the variable with `Remove-Item Env:SLC_LOCAL_TTS_UPDATE_FEED`, or
+   close that terminal.
 
 `SLC_LOCAL_TTS_UPDATE_FEED` may also be an `http://` or `https://` URL. When
 it is unset or empty, the update check reads GitHub.
@@ -359,10 +451,12 @@ uploads it with `vpk upload github`, and publishes the GitHub release.
 ### Commands
 
 ```text
-slc-local-tts              start the server (same as `serve`)
-slc-local-tts serve        start the server
-slc-local-tts voices       list the voices and whether each is installed
-slc-local-tts download ID  download one voice's model now
+slc-local-tts                  start the server with its taskbar icon, or open
+                               the window if it is already running
+slc-local-tts-cli              start the server in the console (same as `serve`)
+slc-local-tts-cli serve        start the server in the console
+slc-local-tts-cli voices       list the voices and whether each is installed
+slc-local-tts-cli download ID  download one voice's model now
 ```
 
 ## Licence

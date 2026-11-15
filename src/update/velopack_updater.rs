@@ -97,8 +97,9 @@ impl Updater for VelopackUpdater {
     }
 
     fn apply_after_exit(&self, pending: &VelopackAsset) -> Result<(), UpdateError> {
-        // The restart arguments are this run's own, so `serve` restarts as
-        // `serve`. Not silent: Velopack may show its progress window.
+        // The restart arguments are this run's own, so the tray program
+        // restarts as it was started. Not silent: Velopack may show its
+        // progress window.
         Ok(self.manager.wait_exit_then_apply_updates(
             pending,
             false,
@@ -114,13 +115,25 @@ impl From<velopack::Error> for UpdateError {
         use velopack::Error as V;
         match e {
             V::NotInstalled(_) => UpdateError::NotInstalled,
-            V::Network(_) => UpdateError::Network(e.to_string()),
+            V::Network(_) => network_reason(&e.to_string()),
             V::ChecksumInvalid(..) | V::SizeInvalid(..) | V::Zip(_) | V::InvalidPackage(_) => {
                 UpdateError::Damaged(e.to_string())
             }
             _ => UpdateError::Other(e.to_string()),
         }
     }
+}
+
+/// What a Velopack network error's `text` means. GitHub answers 403 or 429
+/// when one network checks too often; anything else couldn't reach the
+/// server. Velopack starts its text with "Network error: ", which would read
+/// oddly inside "couldn't be reached (…)", so that's left out.
+pub(crate) fn network_reason(text: &str) -> UpdateError {
+    if text.contains("http status: 403") || text.contains("http status: 429") {
+        return UpdateError::RateLimited;
+    }
+    let reason = text.strip_prefix("Network error: ").unwrap_or(text);
+    UpdateError::Network(reason.to_string())
 }
 
 #[cfg(test)]
@@ -177,6 +190,36 @@ mod tests {
             UpdateError::Other(reason) => assert_eq!(reason, "something odd"),
             other => panic!("expected Other, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn network_reason_cases() {
+        match network_reason("Network error: Http error: http status: 404") {
+            UpdateError::Network(reason) => assert_eq!(reason, "Http error: http status: 404"),
+            other => panic!("expected Network, got {other:?}"),
+        }
+        for limited in [
+            "Network error: Http error: http status: 403",
+            "Network error: Http error: http status: 429",
+        ] {
+            let error = network_reason(limited);
+            assert!(
+                matches!(error, UpdateError::RateLimited),
+                "{limited}: {error:?}"
+            );
+            assert_eq!(
+                error.to_string(),
+                "GitHub is limiting update checks from this network for now"
+            );
+        }
+        match network_reason("Network error: operation timed out") {
+            UpdateError::Network(reason) => assert_eq!(reason, "operation timed out"),
+            other => panic!("expected Network, got {other:?}"),
+        }
+        assert_eq!(
+            network_reason("Network error: operation timed out").to_string(),
+            "the update server couldn't be reached (operation timed out)"
+        );
     }
 
     #[test]

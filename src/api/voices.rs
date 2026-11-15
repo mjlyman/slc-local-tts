@@ -133,7 +133,7 @@ fn voice_object(voice: &'static Voice, installed: bool, host: &RequestHost) -> V
     }
 }
 
-fn gender_label(gender: Gender) -> &'static str {
+pub(crate) fn gender_label(gender: Gender) -> &'static str {
     match gender {
         Gender::Female => "female",
         Gender::Male => "male",
@@ -141,7 +141,7 @@ fn gender_label(gender: Gender) -> &'static str {
     }
 }
 
-fn accent_label(accent: Accent) -> &'static str {
+pub(crate) fn accent_label(accent: Accent) -> &'static str {
     match accent {
         Accent::American => "american",
         Accent::British => "british",

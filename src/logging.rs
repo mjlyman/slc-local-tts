@@ -6,7 +6,7 @@ use std::sync::Mutex;
 
 use tracing::level_filters::LevelFilter;
 use tracing_appender::non_blocking::WorkerGuard;
-use tracing_appender::rolling::{Builder, Rotation};
+use tracing_appender::rolling::{Builder, RollingFileAppender, Rotation};
 use tracing_subscriber::filter::Targets;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -16,25 +16,48 @@ use crate::config::LogLevel;
 /// Log files kept: today's plus the 7 days before it.
 const MAX_LOG_FILES: usize = 8;
 
-/// Our own crate's log target. The library and the binary share this name.
+/// Our own crates' log target. A target matches when it starts with this,
+/// so it covers the library and both binaries (`slc_local_tts` and
+/// `slc_local_tts_cli`).
 const OWN_TARGET: &str = "slc_local_tts";
 
-/// Sets up `tracing`: lines on the console (coloured when `ansi` is true; see
-/// `console::enable_ansi`), plain lines in `logs\slc-local-tts.<date>.log`.
-/// Returns the file writer's guard; keep it alive (see [`park_guard`]) or
-/// buffered lines are lost.
+/// The log file name's start for the server, in either program:
+/// `logs\slc-local-tts.<date>.log`.
+pub const SERVER_LOG_PREFIX: &str = "slc-local-tts";
+
+/// The log file name's start for the settings window, which runs as a
+/// process of its own: `logs\window\slc-local-tts-window.<date>.log`. So the
+/// window never shares a file with the server, and the window's own folder
+/// keeps the server's log cleanup away from its files. (The server's file
+/// can still get a few lines from a second copy, such as a console `serve`
+/// that finds the server already running and says so before it exits.)
+pub const WINDOW_LOG_PREFIX: &str = "slc-local-tts-window";
+
+/// Whether log lines also go to the console, and how.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConsoleLog {
+    /// No console lines: the tray program and the window have no console.
+    Off,
+    /// Plain console lines, for a file, a pipe or a console without colour.
+    Plain,
+    /// Coloured console lines (see `console::enable_ansi`).
+    Ansi,
+}
+
+/// Sets up `tracing`: plain lines in `<logs_dir>\<prefix>.<date>.log` (the
+/// server passes `logs\`, the window `logs\window\`), and lines
+/// on the console as `console` says. Returns the file writer's guard; keep
+/// it alive (see [`park_guard`]) or buffered lines are lost.
 ///
 /// The folder and the file are created before any subscriber is installed,
 /// so a failure here leaves global logging untouched.
-pub fn init(logs_dir: &Path, level: LogLevel, ansi: bool) -> io::Result<WorkerGuard> {
-    std::fs::create_dir_all(logs_dir)?;
-    let appender = Builder::new()
-        .rotation(Rotation::DAILY)
-        .filename_prefix("slc-local-tts")
-        .filename_suffix("log")
-        .max_log_files(MAX_LOG_FILES)
-        .build(logs_dir)
-        .map_err(io::Error::other)?;
+pub fn init(
+    logs_dir: &Path,
+    prefix: &str,
+    level: LogLevel,
+    console: ConsoleLog,
+) -> io::Result<WorkerGuard> {
+    let appender = file_appender(logs_dir, prefix)?;
     // The file is written on a background thread, so a slow disk never holds
     // up a request. The guard is that thread's "stop and flush" handle.
     let (file_writer, guard) = tracing_appender::non_blocking(appender);
@@ -46,8 +69,16 @@ pub fn init(logs_dir: &Path, level: LogLevel, ansi: bool) -> io::Result<WorkerGu
         .with_target(OWN_TARGET, level)
         .with_default(level.min(LevelFilter::WARN));
 
+    // `Option<Layer>` is itself a layer: `None` adds nothing. That lets the
+    // console layer be left out without changing the subscriber's type.
+    let console_layer = match console {
+        ConsoleLog::Off => None,
+        ConsoleLog::Plain => Some(tracing_subscriber::fmt::layer().with_ansi(false)),
+        ConsoleLog::Ansi => Some(tracing_subscriber::fmt::layer().with_ansi(true)),
+    };
+
     tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer().with_ansi(ansi))
+        .with(console_layer)
         .with(
             tracing_subscriber::fmt::layer()
                 .with_ansi(false)
@@ -59,6 +90,21 @@ pub fn init(logs_dir: &Path, level: LogLevel, ansi: bool) -> io::Result<WorkerGu
         .try_init()
         .map_err(io::Error::other)?;
     Ok(guard)
+}
+
+/// The daily log file `<logs_dir>\<prefix>.<date>.log`, creating the folder
+/// first. Building it also deletes the oldest files beyond
+/// [`MAX_LOG_FILES`]: every file directly in `logs_dir` whose name starts
+/// with `prefix` and ends in `.log` counts, but files in subfolders don't.
+pub(crate) fn file_appender(logs_dir: &Path, prefix: &str) -> io::Result<RollingFileAppender> {
+    std::fs::create_dir_all(logs_dir)?;
+    Builder::new()
+        .rotation(Rotation::DAILY)
+        .filename_prefix(prefix)
+        .filename_suffix("log")
+        .max_log_files(MAX_LOG_FILES)
+        .build(logs_dir)
+        .map_err(io::Error::other)
 }
 
 /// Maps the `config.toml` level to `tracing`'s filter.

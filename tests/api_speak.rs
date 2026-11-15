@@ -4,7 +4,7 @@
 mod common;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -14,9 +14,11 @@ use common::{
     FakeStore, FakeSynth, HOST, TestResponse, capture_logs, eventually, get, get_with, post_json,
     post_json_with, send, state, state_with, state_with_budgets, test_app,
 };
+use slc_local_tts::api::error::BudgetPhase;
 use slc_local_tts::api::speak::PREVIEW_TEXT;
 use slc_local_tts::engine::{Prepared, SynthError};
 use slc_local_tts::models::LoadRecovery;
+use slc_local_tts::status::records::Route;
 
 const SILENCE_BYTES: usize = 8_864;
 
@@ -612,4 +614,127 @@ async fn rejected_request_is_logged_with_its_reason() {
     assert!(output.contains("Voice M1"), "{output}");
     assert!(output.contains("fast"), "{output}");
     assert!(!output.contains("Hello there"), "{output}");
+}
+
+// ---------------------------------------------------------------- live status
+
+#[tokio::test]
+async fn pipeline_records_spoken_line() {
+    let st = state(200);
+    let app = test_app(st.clone());
+    let resp = post_json(
+        &app,
+        "/v1/text-to-speech/en_US-joe-medium/stream",
+        speech_body("Welcome aboard\r\n"),
+    )
+    .await;
+    assert_wav(&resp);
+    let records = st.live.records_after(0);
+    assert_eq!(records.len(), 1);
+    let record = &records[0];
+    assert_eq!(record.seq, 1);
+    assert_eq!(record.route, Route::Speech);
+    assert_eq!(record.voice_id, "en_US-joe-medium");
+    assert_eq!(record.outcome, "spoken");
+    assert_eq!(record.text, "Welcome aboard");
+    assert!(record.audio_seconds.unwrap() > 0.0, "{record:?}");
+    assert_eq!(record.phase, None);
+    assert_eq!(record.reason, None);
+    assert_eq!(record.message, None);
+}
+
+#[tokio::test]
+async fn pipeline_records_phase_and_reason() {
+    let slow = FakeStore {
+        delay: Duration::from_secs(1),
+        ..Default::default()
+    };
+    let st = state_with(slow, FakeSynth::default(), 200);
+    let app = test_app(st.clone());
+    let resp = post_json(&app, "/v1/text-to-speech/M1/stream", speech_body("Hi")).await;
+    assert_503(&resp, "budget_exceeded");
+    let record = &st.live.records_after(0)[0];
+    assert_eq!(record.outcome, "budget_exceeded");
+    assert_eq!(record.phase, Some(BudgetPhase::Downloading));
+    assert!(
+        record
+            .message
+            .as_deref()
+            .unwrap()
+            .contains("still downloading")
+    );
+    assert_eq!(record.audio_seconds, None);
+
+    let failing = FakeStore {
+        fail_with: Some("no internet".into()),
+        ..Default::default()
+    };
+    let st = state_with(failing, FakeSynth::default(), 200);
+    let app = test_app(st.clone());
+    let resp = post_json(&app, "/v1/text-to-speech/M1/stream", speech_body("Hi")).await;
+    assert_503(&resp, "model_download_failed");
+    let record = &st.live.records_after(0)[0];
+    assert_eq!(record.outcome, "model_download_failed");
+    assert_eq!(record.reason.as_deref(), Some("no internet"));
+    assert_eq!(record.phase, None);
+}
+
+#[tokio::test]
+async fn preview_records_route_preview() {
+    let st = state(200);
+    let app = test_app(st.clone());
+    let resp = get(&app, "/v1/voices/M3/preview", HOST).await;
+    assert_wav(&resp);
+    let records = st.live.records_after(0);
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].route, Route::Preview);
+    assert_eq!(records[0].voice_id, "M3");
+    assert_eq!(records[0].text, PREVIEW_TEXT);
+    assert_eq!(records[0].outcome, "spoken");
+}
+
+#[tokio::test]
+async fn speaking_visible_during_synthesis() {
+    let synth = FakeSynth {
+        delay: Duration::from_millis(300),
+        ..Default::default()
+    };
+    let st = state_with(FakeStore::default(), synth, 2_000);
+    let app = test_app(st.clone());
+    let request = tokio::spawn({
+        let app = app.clone();
+        async move { post_json(&app, "/v1/text-to-speech/M1/stream", speech_body("Hello")).await }
+    });
+    assert!(eventually(|| st.live.snapshot().speaking.is_some()).await);
+    let speaking = st.live.snapshot().speaking.unwrap();
+    assert_eq!(speaking.voice_id, "M1");
+    assert!(speaking.chars > 0);
+
+    let resp = request.await.unwrap();
+    assert_wav(&resp);
+    assert!(st.live.snapshot().speaking.is_none());
+}
+
+#[tokio::test]
+async fn request_sets_last_request_time() {
+    let st = state(200);
+    let app = test_app(st.clone());
+    assert_eq!(st.live.snapshot().last_request, None);
+    let before = SystemTime::now();
+    post_json(&app, "/v1/text-to-speech/M1/stream", speech_body("Hi")).await;
+    let after = SystemTime::now();
+    let snapshot = st.live.snapshot();
+    let at = snapshot.last_request.unwrap();
+    assert!(before <= at && at <= after, "{at:?}");
+    assert!(snapshot.ever_connected);
+}
+
+#[tokio::test]
+async fn invalid_request_is_not_recorded() {
+    let st = state(200);
+    let app = test_app(st.clone());
+    let resp = post_json(&app, "/v1/text-to-speech/M1/stream", "{not json").await;
+    assert_400(&resp);
+    assert!(st.live.records_after(0).is_empty());
+    assert_eq!(st.live.snapshot().latest_seq, 0);
 }

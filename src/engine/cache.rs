@@ -57,14 +57,22 @@ impl<T> ModelCache<T> {
     ///
     /// No `Arc::strong_count` check is needed to avoid unloading a model in
     /// use: every `synthesize` and `unload_idle` call runs under the global
-    /// synthesis lock (Tasks 14/15), so nothing else holds a model's `Arc`
-    /// while this runs, and dropping ours frees it straight away.
+    /// synthesis lock (the server takes it around each one), so nothing else
+    /// holds a model's `Arc` while this runs, and dropping ours frees it
+    /// straight away.
     pub fn unload_idle(&self, now: Instant, idle_for: Duration) -> usize {
         let mut entries = self.lock();
         let before = entries.len();
         // `saturating_duration_since` gives zero if `last_used` is after `now`.
         entries.retain(|_, (_, last_used)| now.saturating_duration_since(*last_used) < idle_for);
         before - entries.len()
+    }
+
+    /// Drops the model for `key`; returns true if it was loaded. As with
+    /// `unload_idle`, call it under the global synthesis lock, so nothing
+    /// else is using the model and dropping ours frees it at once.
+    pub fn remove(&self, key: &'static str) -> bool {
+        self.lock().remove(key).is_some()
     }
 
     /// Locks the map. A panic while the lock was held (say, in a loader)
@@ -99,5 +107,26 @@ mod tests {
         cache.mark_used("joe", t0);
         assert_eq!(cache.unload_idle(t0 + 9 * minute, 10 * minute), 0);
         assert_eq!(cache.unload_idle(t0 + 11 * minute, 10 * minute), 1);
+    }
+
+    #[test]
+    fn cache_remove_drops_entry() {
+        let cache: ModelCache<String> = ModelCache::new();
+        let loads = Cell::new(0);
+        let load = || {
+            loads.set(loads.get() + 1);
+            Ok("model".to_string())
+        };
+        cache.get_or_load("joe", load).unwrap();
+        cache.get_or_load("amy", load).unwrap();
+
+        assert!(cache.remove("joe"));
+        assert!(!cache.remove("joe"));
+
+        // The other model stays loaded; the removed one loads again.
+        cache.get_or_load("amy", load).unwrap();
+        assert_eq!(loads.get(), 2);
+        cache.get_or_load("joe", load).unwrap();
+        assert_eq!(loads.get(), 3);
     }
 }

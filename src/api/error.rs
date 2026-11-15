@@ -3,16 +3,19 @@
 use axum::Json;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
+use serde::{Deserialize, Serialize};
 
 use crate::audio::{encode_wav, silence};
 use crate::catalog::{self, Engine};
+use crate::models::DeleteError;
 
 /// Name of the response header that tells a human (or a log reader) which
 /// error was hidden behind a silent 200.
 pub const ERROR_HEADER: &str = "X-SLC-Local-TTS-Error";
 
 /// Where a request was when its time budget ran out.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum BudgetPhase {
     /// The voice's model was still downloading.
     Downloading,
@@ -31,6 +34,22 @@ pub enum AppError {
     VoiceNotFound(String),
     #[error("forbidden host")]
     ForbiddenHost,
+    /// A private settings-window route was asked by something else.
+    #[error("forbidden client")]
+    ForbiddenClient,
+    /// No catalog archive has this stem.
+    #[error("model not found: {0}")]
+    ModelNotFound(String),
+    /// A delete was asked for while the model downloads.
+    #[error("model busy")]
+    ModelBusy,
+    /// The download failed earlier in a way only an app update can fix.
+    #[error("download refused: {0}")]
+    DownloadRefused(String),
+    /// "Restart and update now" was asked for with no update ready, or in
+    /// a program that can't restart itself.
+    #[error("no update")]
+    NoUpdate,
     #[error("route not found")]
     RouteNotFound,
     #[error("method not allowed")]
@@ -52,8 +71,13 @@ impl AppError {
     pub fn status(&self) -> StatusCode {
         match self {
             AppError::InvalidRequest(_) => StatusCode::BAD_REQUEST,
-            AppError::VoiceNotFound(_) | AppError::RouteNotFound => StatusCode::NOT_FOUND,
-            AppError::ForbiddenHost => StatusCode::FORBIDDEN,
+            AppError::VoiceNotFound(_) | AppError::RouteNotFound | AppError::ModelNotFound(_) => {
+                StatusCode::NOT_FOUND
+            }
+            AppError::ForbiddenHost | AppError::ForbiddenClient => StatusCode::FORBIDDEN,
+            AppError::ModelBusy | AppError::DownloadRefused(_) | AppError::NoUpdate => {
+                StatusCode::CONFLICT
+            }
             AppError::MethodNotAllowed => StatusCode::METHOD_NOT_ALLOWED,
             AppError::BudgetExceeded(_) => StatusCode::GATEWAY_TIMEOUT,
             AppError::ModelDownloadFailed(_) => StatusCode::BAD_GATEWAY,
@@ -69,6 +93,11 @@ impl AppError {
             AppError::InvalidRequest(_) => "invalid_request",
             AppError::VoiceNotFound(_) => "voice_not_found",
             AppError::ForbiddenHost => "forbidden_host",
+            AppError::ForbiddenClient => "forbidden_client",
+            AppError::ModelNotFound(_) => "model_not_found",
+            AppError::ModelBusy => "model_busy",
+            AppError::DownloadRefused(_) => "download_refused",
+            AppError::NoUpdate => "no_update",
             AppError::RouteNotFound => "not_found",
             AppError::MethodNotAllowed => "method_not_allowed",
             AppError::BudgetExceeded(_) => "budget_exceeded",
@@ -79,8 +108,21 @@ impl AppError {
         }
     }
 
+    /// The error's own detail (for example "no internet"), for the errors
+    /// that carry one, without the wording `message` wraps around it.
+    pub fn reason(&self) -> Option<&str> {
+        match self {
+            AppError::ModelDownloadFailed(reason)
+            | AppError::ModelLoadFailed(reason)
+            | AppError::SynthesisFailed(reason)
+            | AppError::Internal(reason) => Some(reason),
+            _ => None,
+        }
+    }
+
     /// User-facing text. Written as a phrase that reads correctly after
-    /// "Voice M1: " and ends with a full stop.
+    /// "Voice M1: " and ends with a full stop, except for the errors of the
+    /// settings window's routes, which the window shows as whole sentences.
     pub fn message(&self) -> String {
         match self {
             AppError::InvalidRequest(reason) => format!("the request was not valid: {reason}."),
@@ -90,6 +132,17 @@ impl AppError {
             AppError::ForbiddenHost => {
                 "was refused because the request did not come from this computer.".to_string()
             }
+            AppError::ForbiddenClient => {
+                "Only the SLC Local TTS window can use this address.".to_string()
+            }
+            AppError::ModelNotFound(stem) => {
+                format!("There's no voice download called \"{stem}\".")
+            }
+            AppError::ModelBusy => DeleteError::Downloading.to_string(),
+            AppError::DownloadRefused(reason) => {
+                format!("This voice can't be downloaded: {reason}.")
+            }
+            AppError::NoUpdate => "No update is ready to install.".to_string(),
             AppError::RouteNotFound => {
                 "was asked for a page this server does not have.".to_string()
             }
@@ -114,11 +167,18 @@ impl AppError {
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        let body = serde_json::json!({
-            "detail": { "status": self.code(), "message": self.message() }
-        });
-        (self.status(), Json(body)).into_response()
+        error_response(self.status(), self.code(), &self.message())
     }
+}
+
+/// An error in the ElevenLabs JSON shape,
+/// `{"detail": {"status": <code>, "message": <message>}}`. For the rare
+/// error whose text comes from elsewhere; `AppError` covers the rest.
+pub fn error_response(status: StatusCode, code: &str, message: &str) -> Response {
+    let body = serde_json::json!({
+        "detail": { "status": code, "message": message }
+    });
+    (status, Json(body)).into_response()
 }
 
 /// A 200 WAV response with the given body and an optional error code header.
@@ -190,7 +250,8 @@ fn speech_advice(err: &AppError, voice_id: &str) -> String {
     match err {
         AppError::BudgetExceeded(BudgetPhase::Downloading) => format!(
             " Install voices before flying: press the voice's preview button in SLC, \
-             or run slc-local-tts download {voice_id}."
+             install it on the Voices page of the SLC Local TTS window, \
+             or run slc-local-tts-cli download {voice_id}."
         ),
         AppError::BudgetExceeded(BudgetPhase::Speaking) => {
             match catalog::find(voice_id).map(|voice| voice.engine) {
@@ -222,6 +283,15 @@ mod tests {
             (AppError::InvalidRequest("x".into()), 400, "invalid_request"),
             (AppError::VoiceNotFound("v".into()), 404, "voice_not_found"),
             (AppError::ForbiddenHost, 403, "forbidden_host"),
+            (AppError::ForbiddenClient, 403, "forbidden_client"),
+            (AppError::ModelNotFound("m".into()), 404, "model_not_found"),
+            (AppError::ModelBusy, 409, "model_busy"),
+            (
+                AppError::DownloadRefused("r".into()),
+                409,
+                "download_refused",
+            ),
+            (AppError::NoUpdate, 409, "no_update"),
             (AppError::RouteNotFound, 404, "not_found"),
             (AppError::MethodNotAllowed, 405, "method_not_allowed"),
             (
@@ -338,6 +408,30 @@ mod tests {
     }
 
     #[test]
+    fn settings_window_messages() {
+        assert_eq!(
+            AppError::ForbiddenClient.message(),
+            "Only the SLC Local TTS window can use this address."
+        );
+        assert_eq!(
+            AppError::ModelNotFound("kokoro".into()).message(),
+            "There's no voice download called \"kokoro\"."
+        );
+        assert_eq!(
+            AppError::ModelBusy.message(),
+            "This voice is downloading. Wait for it to finish, then delete it."
+        );
+        assert_eq!(
+            AppError::NoUpdate.message(),
+            "No update is ready to install."
+        );
+        assert_eq!(
+            AppError::DownloadRefused("the file changed".into()).message(),
+            "This voice can't be downloaded: the file changed."
+        );
+    }
+
+    #[test]
     fn budget_messages_name_the_phase() {
         let downloading = AppError::BudgetExceeded(BudgetPhase::Downloading);
         let speaking = AppError::BudgetExceeded(BudgetPhase::Speaking);
@@ -353,7 +447,14 @@ mod tests {
             speech_failure(AppError::BudgetExceeded(BudgetPhase::Downloading), "M1");
         });
         assert!(logs.contains("failure sound"), "{logs}");
-        assert!(logs.contains("slc-local-tts download M1"), "{logs}");
+        assert!(
+            logs.contains(
+                " Install voices before flying: press the voice's preview button in SLC, \
+                 install it on the Voices page of the SLC Local TTS window, \
+                 or run slc-local-tts-cli download M1."
+            ),
+            "{logs}"
+        );
 
         // af_alloy is a Kokoro voice.
         let logs = capture_logs(|| {

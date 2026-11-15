@@ -62,10 +62,17 @@ pub(crate) fn run_check(updater: &impl Updater, publish: &watch::Sender<UpdateSt
 
 /// Starts installing a downloaded update, if there is one. `Ok(true)` means
 /// the updater is now waiting for this process to exit.
-pub(crate) fn apply_pending(updater: &impl Updater) -> Result<bool, UpdateError> {
+///
+/// `prepare` is called just before the install starts, and not at all when
+/// there's nothing to install.
+pub(crate) fn apply_pending(
+    updater: &impl Updater,
+    prepare: impl FnOnce(),
+) -> Result<bool, UpdateError> {
     let Some(asset) = updater.pending() else {
         return Ok(false);
     };
+    prepare();
     tracing::info!(
         "Installing version {}. SLC Local TTS closes now and starts again by itself in a few seconds.",
         asset.Version
@@ -281,7 +288,7 @@ mod tests {
     #[test]
     fn apply_without_pending_is_false() {
         let fake = FakeUpdater::default();
-        assert!(matches!(apply_pending(&fake), Ok(false)));
+        assert!(matches!(apply_pending(&fake, || {}), Ok(false)));
         assert!(!fake.calls().contains(&"apply"), "{:?}", fake.calls());
     }
 
@@ -291,11 +298,28 @@ mod tests {
             pending: Some(asset("0.2.5")),
             ..Default::default()
         };
-        assert!(matches!(apply_pending(&fake), Ok(true)));
+        assert!(matches!(apply_pending(&fake, || {}), Ok(true)));
         assert_eq!(
             fake.applied_version.lock().unwrap().as_deref(),
             Some("0.2.5")
         );
+    }
+
+    #[test]
+    fn prepare_runs_only_before_a_real_apply() {
+        let mut prepared = 0;
+        assert!(matches!(
+            apply_pending(&FakeUpdater::default(), || prepared += 1),
+            Ok(false)
+        ));
+        assert_eq!(prepared, 0, "nothing pending, so nothing to prepare for");
+
+        let fake = FakeUpdater {
+            pending: Some(asset("0.2.5")),
+            ..Default::default()
+        };
+        assert!(matches!(apply_pending(&fake, || prepared += 1), Ok(true)));
+        assert_eq!(prepared, 1);
     }
 
     #[test]
@@ -307,7 +331,10 @@ mod tests {
             )))),
             ..Default::default()
         };
-        assert!(matches!(apply_pending(&fake), Err(UpdateError::Other(_))));
+        assert!(matches!(
+            apply_pending(&fake, || {}),
+            Err(UpdateError::Other(_))
+        ));
     }
 
     #[test]

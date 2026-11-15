@@ -2,8 +2,8 @@
 #
 #   . (Join-Path $PSScriptRoot 'release-info.ps1')
 #
-# tests/notices.rs checks $RepoUrl and $PackId against the code, so a change
-# here that the code doesn't match fails `cargo test`.
+# tests/notices.rs checks $RepoUrl, $PackId and $PackTitle against the code,
+# so a change here that the code doesn't match fails `cargo test`.
 #
 # This file must stay ASCII only: Windows PowerShell 5.1 reads non-BOM
 # scripts as ANSI.

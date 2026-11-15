@@ -1,8 +1,11 @@
-//! Starts the real `slc-local-tts.exe` and checks what it does before any of
-//! its own work begins: Velopack's hook arguments must be handled and exit
-//! at once, before the command line is parsed or the data folder is touched,
-//! and `serve` must refuse to start while another copy holds the instance
-//! mutex.
+//! Starts the real executables and checks what they do before any of their
+//! own work begins: Velopack's hook arguments must be handled and exit at
+//! once, before the command line is parsed or the data folder is touched,
+//! and the console program's `serve` must refuse to start while another
+//! copy holds the instance mutex.
+//!
+//! No test here may lead `slc-local-tts.exe` (the tray program) to a message
+//! box or a window: nobody would close it, so the test would hang.
 
 use std::io::Read;
 use std::net::TcpListener;
@@ -15,17 +18,22 @@ const TIMEOUT: Duration = Duration::from_secs(15);
 /// How often to check whether the child has exited.
 const POLL: Duration = Duration::from_millis(50);
 
-/// Runs the exe with `args` and the data folder `home`, and returns its exit
+/// The tray program, which Velopack's shortcut and hooks start.
+const GUI_EXE: &str = env!("CARGO_BIN_EXE_slc-local-tts");
+/// The console program.
+const CLI_EXE: &str = env!("CARGO_BIN_EXE_slc-local-tts-cli");
+
+/// Runs `exe` with `args` and the data folder `home`, and returns its exit
 /// status and everything it printed (stdout, then stderr).
-fn run_exe(args: &[&str], home: &Path) -> (ExitStatus, String) {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_slc-local-tts"))
+fn run_exe(exe: &str, args: &[&str], home: &Path) -> (ExitStatus, String) {
+    let mut child = Command::new(exe)
         .args(args)
         .env("SLC_LOCAL_TTS_HOME", home)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("couldn't start slc-local-tts.exe");
+        .unwrap_or_else(|e| panic!("couldn't start {exe}: {e}"));
 
     let started = Instant::now();
     let status = loop {
@@ -35,7 +43,7 @@ fn run_exe(args: &[&str], home: &Path) -> (ExitStatus, String) {
         if started.elapsed() > TIMEOUT {
             let _ = child.kill();
             let _ = child.wait();
-            panic!("slc-local-tts.exe {args:?} was still running after {TIMEOUT:?}");
+            panic!("{exe} {args:?} was still running after {TIMEOUT:?}");
         }
         std::thread::sleep(POLL);
     };
@@ -58,16 +66,20 @@ fn velopack_hook_args_exit_at_once() {
     let tmp = tempfile::tempdir().unwrap();
     // Not created: the exe must exit before it would create its data folder.
     let home = tmp.path().join("José Ü @home");
-    for hook in [
-        "--veloapp-install",
-        "--veloapp-updated",
-        "--veloapp-obsolete",
-        "--veloapp-uninstall",
-    ] {
-        let (status, output) = run_exe(&[hook, "0.2.0"], &home);
-        assert_eq!(status.code(), Some(0), "{hook}: {output}");
-        assert_eq!(output, "", "{hook} printed something");
-        assert!(!home.exists(), "{hook} created the data folder");
+    // Velopack starts the tray program; the console program must cope too,
+    // since both share the startup code.
+    for exe in [GUI_EXE, CLI_EXE] {
+        for hook in [
+            "--veloapp-install",
+            "--veloapp-updated",
+            "--veloapp-obsolete",
+            "--veloapp-uninstall",
+        ] {
+            let (status, output) = run_exe(exe, &[hook, "0.2.0"], &home);
+            assert_eq!(status.code(), Some(0), "{exe} {hook}: {output}");
+            assert_eq!(output, "", "{exe} {hook} printed something");
+            assert!(!home.exists(), "{exe} {hook} created the data folder");
+        }
     }
 }
 
@@ -108,9 +120,13 @@ fn serve_exits_when_already_running() {
     let tmp = tempfile::tempdir().unwrap();
     let home = home_with_free_port(tmp.path());
 
-    let (status, output) = run_exe(&["serve"], &home);
+    let (status, output) = run_exe(CLI_EXE, &["serve"], &home);
     assert_eq!(status.code(), Some(1), "{output}");
     assert!(output.contains("already running"), "{output}");
+    assert!(
+        output.contains("SLC Local TTS is already running in the taskbar corner."),
+        "{output}"
+    );
     // No models or espeak folder means the child stopped before
     // `server::start`, the first code that creates either.
     assert!(
@@ -129,7 +145,7 @@ fn voices_runs_while_a_server_runs() {
     let tmp = tempfile::tempdir().unwrap();
     let home = home_with_free_port(tmp.path());
 
-    let (status, output) = run_exe(&["voices"], &home);
+    let (status, output) = run_exe(CLI_EXE, &["voices"], &home);
     assert_eq!(status.code(), Some(0), "{output}");
     assert!(output.contains("en_US-joe-medium"), "{output}");
 }

@@ -1,62 +1,61 @@
-//! `slc-local-tts` binary: parses the command line, sets up logging and the
-//! console, and hands off to the library. Running with no subcommand starts
-//! the server.
+//! `slc-local-tts` binary, the tray program. It never has a console window:
+//! startup errors appear in a message box instead.
+//!
+//! - With no arguments, it starts the speech server, unless a copy is
+//!   already running; then it opens that copy's settings window and exits.
+//! - `window --port <n>` (started by the program itself, never by people)
+//!   is the settings window, a process of its own.
 
-use std::fmt::{Display, Write as _};
+// The "windows" subsystem means Windows opens no console for this exe.
+// Test builds keep the console subsystem, so test output still shows.
+#![cfg_attr(not(test), windows_subsystem = "windows")]
+
+use std::fmt::Display;
 use std::process::ExitCode;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use clap::{Parser, Subcommand};
-use windows_sys::Win32::System::Threading::{
-    BELOW_NORMAL_PRIORITY_CLASS, GetCurrentProcess, SetPriorityClass,
-};
 
-use slc_local_tts::catalog::{self, Archive, Voice};
-use slc_local_tts::config::{self, Config, ConfigError, LogLevel, Priority};
-use slc_local_tts::instance::AlreadyRunning;
-use slc_local_tts::models::install::{self, HttpInstaller};
-use slc_local_tts::models::{DiskStore, ModelStore};
+use slc_local_tts::api::slc::status_snapshot;
+use slc_local_tts::autostart::{self, RunEntry};
+use slc_local_tts::config::{self, Config};
+use slc_local_tts::desktop::{dialog, handoff, shell};
 use slc_local_tts::paths::DataDir;
-use slc_local_tts::server::{self, StartupError};
-use slc_local_tts::update::UpdateError;
-use slc_local_tts::{console, instance, logging, update};
+use slc_local_tts::server::{self, ServerOptions, Started, StartupError};
+use slc_local_tts::startup::{self, Boot, Gate, Mode, SHUTDOWN_GRACE};
+use slc_local_tts::stop::{ServedFlag, StopReason, StopSignal};
+use slc_local_tts::tray::{self, TrayContext, TrayHandle};
+use slc_local_tts::{instance, logging, ui, update};
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+/// How many times a second launch reads the port file, and how far apart,
+/// before it falls back to the port in `config.toml`.
+const PORT_FILE_TRIES: u32 = 10;
+const PORT_FILE_WAIT: Duration = Duration::from_millis(500);
 
-/// Async worker threads. Requests are light (synthesis runs on tokio's
-/// blocking pool, one at a time), so two keep the thread count small next
-/// to the flight sim.
-const WORKER_THREADS: usize = 2;
-
-/// How long to wait at exit for blocking work (an unload, an unpack) to end.
-const SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
-
-/// Exit code for `download` with a voice ID the catalog doesn't know.
-const EXIT_UNKNOWN_VOICE: u8 = 2;
+/// How long installing an update waits for an open settings window to
+/// close first.
+const WINDOW_CLOSE_WAIT: Duration = Duration::from_secs(2);
 
 /// Local, ElevenLabs-compatible text-to-speech server for Self-Loading Cargo.
-// `#[derive(Parser)]` generates the argument parser from this struct; the doc
-// comments become the `--help` text.
 #[derive(Debug, Parser)]
 #[command(version)]
-struct Cli {
-    /// What to do. With no subcommand, the server starts (same as `serve`).
-    // `Option` makes the subcommand optional: `None` means the user typed none.
+struct GuiCli {
+    // `Option`: with no subcommand (`None`), the server starts.
     #[command(subcommand)]
-    command: Option<Command>,
+    command: Option<GuiCommand>,
 }
 
-// `PartialEq` lets the tests compare parsed commands with `assert_eq!`.
 #[derive(Debug, PartialEq, Eq, Subcommand)]
-enum Command {
-    /// Start the speech server (the default).
-    Serve,
-    /// List the voices this server offers.
-    Voices,
-    /// Download the model for one voice ahead of time.
-    Download {
-        /// Voice ID, for example `M1` or `en_US-joe-medium`.
-        voice: String,
+enum GuiCommand {
+    /// The settings window, for the server on `port`. Only the program
+    /// itself starts it, so it's left out of `--help`.
+    #[command(hide = true)]
+    Window {
+        #[arg(long)]
+        port: u16,
+        /// The very first start: the window explains the tray icon.
+        #[arg(long)]
+        first_run: bool,
     },
 }
 
@@ -67,396 +66,289 @@ fn main() -> ExitCode {
     // come before clap, which would reject those arguments.
     update::hooks().run();
 
-    let cli = Cli::parse();
-    let owns_console = console::owns_console();
+    let cli = match GuiCli::try_parse() {
+        Ok(cli) => cli,
+        Err(e) => {
+            // `--help` and `--version` arrive here too, with exit code 0;
+            // a real mistake has clap's usual exit code, 2.
+            dialog::error(&e.to_string());
+            return ExitCode::from(u8::try_from(e.exit_code()).unwrap_or(2));
+        }
+    };
+    if let Some(GuiCommand::Window { port, first_run }) = cli.command {
+        return ui::run_window(port, first_run);
+    }
 
-    let data = match DataDir::from_env() {
-        Ok(data) => data,
-        Err(e) => return fail_before_logging(&e, owns_console),
+    // One server at a time. The mutex is taken before logging starts, so a
+    // second launch never writes to the running server's log file.
+    let guard = match instance::acquire() {
+        Ok(guard) => guard,
+        Err(_) => {
+            hand_off();
+            return ExitCode::SUCCESS;
+        }
     };
 
-    // `config.toml` is read once, here, only so logging can start at the
-    // configured level (Info if the file is missing or invalid). A config
-    // error is reported once logging is up, so it reaches the log file too.
-    let config = config::load(&data.config_file());
-    let level = config.as_ref().map_or(LogLevel::Info, |c| c.log_level);
-    // A plain Win32 call on this thread (no threads start): colour codes only
-    // where the console can show them.
-    let ansi = console::enable_ansi();
-    match logging::init(&data.logs(), level, ansi) {
-        Ok(guard) => logging::park_guard(guard),
-        Err(e) => {
-            let error = StartupError::DataDirNotWritable {
-                path: data.root().to_path_buf(),
-            };
-            return fail_before_logging(&format!("{error}\n(Details: {e})"), owns_console);
+    let boot = match startup::boot(Mode::Gui) {
+        Ok(boot) => boot,
+        Err(text) => {
+            dialog::error(&text);
+            return ExitCode::FAILURE;
         }
-    }
-    logging::install_panic_hook();
+    };
 
-    let code = run(
-        cli.command.unwrap_or(Command::Serve),
-        data,
-        config,
-        owns_console,
-    );
+    // The mutex is already held, so the gate's first step just hands the
+    // guard over; the gate then installs a downloaded update if there is
+    // one, unless "Check for updates" is off. `instance` keeps the mutex
+    // until `run` lets it go.
+    let allowed = startup::apply_allowed(&boot.config);
+    let apply = || {
+        if allowed {
+            // A settings window may be open: its "Start SLC Local TTS"
+            // button starts this copy.
+            update::apply_pending_and_restart_after(close_settings_window)
+        } else {
+            Ok(false)
+        }
+    };
+    let instance = match startup::serve_gate(|| Ok(guard), apply) {
+        Gate::Serve(guard) => guard,
+        // The updater is waiting for this process to exit before it
+        // replaces the program's files, so exit at once.
+        Gate::Restarting => {
+            logging::flush();
+            return ExitCode::SUCCESS;
+        }
+        // Can't happen: the first step above always succeeds.
+        Gate::AlreadyRunning(e) => {
+            let code = fail(&e);
+            logging::flush();
+            return code;
+        }
+    };
+
+    let code = run(boot, instance);
     // Statics are never dropped in Rust, so the parked log guard must be
-    // flushed by hand before the process ends.
+    // flushed by hand before the process ends. This also covers "Restart
+    // and update now": the updater waits for this process to exit, so the
+    // lines about the install are all written by then.
     logging::flush();
     code
 }
 
-/// Everything after logging is up: config, priority, console, then the
-/// command itself.
-fn run(
-    command: Command,
-    data: DataDir,
-    config: Result<Config, ConfigError>,
-    owns_console: bool,
-) -> ExitCode {
-    let config = match config {
+/// A second launch: open the running copy's settings window on the port it
+/// really uses, then exit. Logging never starts here.
+fn hand_off() {
+    // Without a readable port file or config, the default port.
+    let default_port = Config::default().port;
+    let port = match DataDir::from_env() {
+        Ok(data) => {
+            let config_port = config::load(&data.config_file()).map_or(default_port, |c| c.port);
+            handoff::resolve_port(
+                || handoff::read_port_file(&data),
+                config_port,
+                PORT_FILE_TRIES,
+                PORT_FILE_WAIT,
+            )
+        }
+        Err(_) => default_port,
+    };
+    if let Err(e) = handoff::spawn_window(port, false) {
+        dialog::error(&format!(
+            "SLC Local TTS is already running, but its settings window couldn't open ({e}). Try again, or use its icon in the taskbar corner."
+        ));
+    }
+}
+
+/// Everything after the startup checks: config, priority, runtime, then the
+/// server and its tray icon until the server is told to stop, and what
+/// comes after that ("Restart and update now" installs the update).
+/// `instance` is the held instance mutex.
+fn run(boot: Boot, instance: instance::InstanceGuard) -> ExitCode {
+    let Boot { data, config } = boot;
+    let config: Config = match config {
         Ok(config) => config,
         Err(error) => {
             let path = data.config_file();
-            return fail(&StartupError::Config { error, path }, owns_console);
+            return fail(&StartupError::Config { error, path });
         }
     };
-    set_priority(config.priority);
+    startup::set_priority(config.priority);
+    refresh_autostart();
 
-    // In a terminal the window belongs to the shell, so its title and
-    // settings are left alone. The close handler is always installed:
-    // closing a terminal window ends us just the same.
-    if owns_console {
-        console::disable_quick_edit();
-        console::set_title("SLC Local TTS");
-    }
-    console::install_close_handler();
-
-    let runtime = match tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(WORKER_THREADS)
-        .enable_all()
-        .build()
-    {
+    let runtime = match startup::runtime() {
         Ok(runtime) => runtime,
-        Err(e) => {
-            let message = format!(
-                "SLC Local TTS couldn't start its worker threads ({e}). Close some programs and start it again."
-            );
-            return fail(&message, owns_console);
-        }
+        Err(e) => return fail(&startup::runtime_error_text(&e)),
+    };
+    let stop = StopSignal::new();
+    // Set once the server has stopped, for the tray thread, which waits for
+    // it when Windows ends the session.
+    let served_flag = ServedFlag::default();
+    let just_updated = update::updated_to().is_some();
+    let options = ServerOptions {
+        updated_to: update::updated_to().map(str::to_owned),
+        can_restart_to_update: true,
+        stop: stop.clone(),
     };
 
-    let code = match command {
-        Command::Serve => {
-            // One server at a time: take the instance mutex before binding
-            // the port or cleaning anything up, then install any update an
-            // earlier run downloaded. It's named `_instance`, not `_`, on
-            // purpose: `let _ = ..` drops the guard at once, which would
-            // release the mutex straight away. A named binding lives to the
-            // end of this block, so until `serve` returns.
-            let _instance = match serve_gate(instance::acquire, update::apply_pending_and_restart) {
-                Gate::Serve(guard) => guard,
-                Gate::AlreadyRunning(e) => return fail(&e, owns_console),
-                // `Ok(true)` from the apply: the updater is waiting for this
-                // process to exit, so return from `main` now, without
-                // "Press Enter".
-                Gate::Restarting => return ExitCode::SUCCESS,
-            };
-            match runtime.block_on(serve(data, config)) {
-                Ok(()) => ExitCode::SUCCESS,
-                Err(error) => fail(&error, owns_console),
-            }
+    // The tray, once it starts. It's kept outside the async block so it can
+    // be shut down after `block_on` returns, on this plain thread.
+    let mut tray: Option<TrayHandle> = None;
+    let served = runtime.block_on(async {
+        let started = server::start(data.clone(), config, options).await?;
+        tray = start_tray(&started, &stop, &served_flag);
+        // The very first start of the tray program opens the window once,
+        // to explain where the program went; so does the first start after
+        // an update, to say what it updated to.
+        let first_run = handoff::take_first_run(&data);
+        if (first_run || just_updated)
+            && let Err(e) = handoff::spawn_window(started.port(), first_run)
+        {
+            tracing::warn!("couldn't open the settings window ({e})");
         }
-        Command::Voices => {
-            let models = data.models();
-            print!(
-                "{}",
-                voices_table(catalog::voices(), |archive| install::is_installed(
-                    archive, &models
-                ))
-            );
-            ExitCode::SUCCESS
-        }
-        Command::Download { voice } => runtime.block_on(download(&data, &voice)),
-    };
+        startup::serve_until_stopped(started, &data, stop).await
+    });
+    served_flag.set();
+    if let Some(tray) = tray {
+        tray.shutdown();
+    }
     // Dropping a runtime waits for every blocking task without limit; this
     // waits a few seconds at most.
     runtime.shutdown_timeout(SHUTDOWN_GRACE);
-    code
-}
-
-/// What `serve` does after its startup checks.
-enum Gate<G> {
-    /// Start the server, holding the instance guard.
-    Serve(G),
-    /// Another copy is running; stop with this error.
-    AlreadyRunning(AlreadyRunning),
-    /// The updater is installing a downloaded update; exit now.
-    Restarting,
-}
-
-/// `serve`'s startup order: the instance mutex first, then a downloaded
-/// update. A second copy never gets as far as the update, so it can't
-/// restart the server that's already running. A failed install costs only a
-/// warning: this version starts instead. Both steps are passed in, so tests
-/// can check the order without a real mutex or install.
-fn serve_gate<G>(
-    acquire: impl FnOnce() -> Result<G, AlreadyRunning>,
-    apply: impl FnOnce() -> Result<bool, UpdateError>,
-) -> Gate<G> {
-    let guard = match acquire() {
-        Ok(guard) => guard,
-        Err(e) => return Gate::AlreadyRunning(e),
+    let reason = match served {
+        Ok(reason) => reason,
+        Err(error) => {
+            drop(instance);
+            return fail(&error);
+        }
     };
-    match apply() {
-        Ok(true) => Gate::Restarting,
-        Ok(false) => Gate::Serve(guard),
+    if reason == StopReason::RestartToUpdate {
+        // While the mutex is still held, so no other copy can start (and
+        // run its own startup install) during the wait.
+        close_settings_window();
+    }
+    // The mutex goes before `after_stop` installs the update or starts a
+    // new copy. A copy started while this one still held it would take
+    // itself for a second launch, open a window and exit, leaving SLC with
+    // no server.
+    drop(instance);
+    startup::after_stop(
+        reason,
+        || update::apply_pending_and_restart().map_err(|e| e.to_string()),
+        dialog::error,
+        start_again,
+    )
+}
+
+/// Closes an open settings window and waits a moment for it to go. It runs
+/// from the folder that installing an update replaces.
+fn close_settings_window() {
+    if !shell::close_window_and_wait(ui::TITLE, WINDOW_CLOSE_WAIT) {
+        tracing::warn!(
+            "the settings window didn't close within {} seconds; installing the update anyway",
+            WINDOW_CLOSE_WAIT.as_secs()
+        );
+    }
+}
+
+/// Starts this version again after "Restart and update now" installed
+/// nothing.
+fn start_again() {
+    if let Err(e) = shell::start_server() {
+        tracing::error!("couldn't start SLC Local TTS again ({e})");
+        dialog::error(&format!(
+            "SLC Local TTS couldn't start again ({e}). Start it from the Start menu."
+        ));
+    }
+}
+
+/// Starts the tray icon, and wakes it whenever the status or the update
+/// check changes. A tray that can't start is logged, and the server runs
+/// on without it.
+fn start_tray(started: &Started, stop: &StopSignal, served: &ServedFlag) -> Option<TrayHandle> {
+    // Two handles to the same shared state, one for each closure: each
+    // `move` closure owns its handle, so the tray thread can keep them.
+    let state = started.state();
+    let expiry_state = started.state();
+    let changes = state.live.subscribe();
+    let ctx = TrayContext {
+        port: started.port(),
+        snapshot: Box::new(move || status_snapshot(&state, SystemTime::now())),
+        next_expiry: Box::new(move || expiry_state.live.next_failure_expiry(SystemTime::now())),
+        stop: stop.clone(),
+        served: served.clone(),
+        // Without it, the icon just has no fixed identity.
+        exe: std::env::current_exe().unwrap_or_default(),
+    };
+    match tray::spawn(ctx) {
+        Ok(handle) => {
+            tokio::spawn(tray::forward_changes(
+                changes,
+                started.updates(),
+                handle.clone(),
+            ));
+            Some(handle)
+        }
         Err(e) => {
-            tracing::warn!(
-                "Couldn't install the downloaded update ({e}). Starting this version instead; it tries again the next time SLC Local TTS starts."
+            tracing::error!(
+                "the tray icon couldn't start ({e}); the server keeps running. Open SLC Local TTS from the Start Menu to see its window."
             );
-            Gate::Serve(guard)
+            None
         }
     }
 }
 
-/// `serve`: start, show the banner, check for updates in the background,
-/// answer requests until Ctrl+C.
-async fn serve(data: DataDir, config: Config) -> Result<(), StartupError> {
-    let config_path = data.config_file();
-    let models_dir = data.models();
-    // `server::start` takes ownership of `config`, so keep a copy for the
-    // update check.
-    let config_copy = config.clone();
-    let started = server::start(data, config).await?;
-    let port = started.port();
-    let url = format!("http://127.0.0.1:{port}");
-    tracing::info!(
-        version = VERSION,
-        config = %config_path.display(),
-        models = %models_dir.display(),
-        %url,
-        "SLC Local TTS is listening; paste {url} into SLC's ElevenLabs Custom API URL"
-    );
-    println!("\n{}\n", server::banner(VERSION, port));
-    if let Some(version) = update::updated_to() {
-        let note = update::updated_note(version);
-        println!("{note}\n");
-        tracing::info!("{note}");
-    }
-    // Now that the server is listening: check for updates once, on a
-    // blocking thread, and log how it goes. Neither ever stops the server.
-    tokio::spawn(update::log_changes(update::spawn_check(&config_copy)));
-
-    // The shutdown future: it completes on the first Ctrl+C, which tells
-    // `serve` to stop taking requests, finish the ones in progress and
-    // return. `async { .. }` builds the future without running it; `serve`
-    // polls it alongside the connections.
-    let shutdown = async {
-        match tokio::signal::ctrl_c().await {
-            Ok(()) => tracing::info!(
-                "Stopping after the requests in progress finish. Press Ctrl+C again to quit now."
-            ),
-            Err(e) => {
-                // Without a Ctrl+C handler, Windows' default one still ends
-                // the process. Never resolving keeps the server running.
-                tracing::warn!(error = %e, "couldn't listen for Ctrl+C");
-                std::future::pending::<()>().await;
-            }
-        }
+/// Points an existing start-with-Windows entry at this copy, for example
+/// after an update moved the program. Only an installed copy does this, so
+/// a development build never takes over an installed copy's entry.
+fn refresh_autostart() {
+    let Ok(exe) = std::env::current_exe() else {
+        return;
     };
-    started.serve(shutdown).await?;
-    tracing::info!("SLC Local TTS stopped");
-    Ok(())
-}
-
-/// `download <voice>`: installs one voice's model now. Exit code 0 when it
-/// is installed, 2 for an unknown voice, 1 when the download fails.
-///
-/// It works whether or not a server is running. Both install through the
-/// same per-archive lock file, so if the server is already downloading this
-/// voice, this waits for it and then reports the voice installed. It doesn't
-/// sweep leftover download files the way the server does at startup; the
-/// installer clears its own archive's stale scratch files under the lock.
-async fn download(data: &DataDir, id: &str) -> ExitCode {
-    let Some(voice) = catalog::find(id) else {
-        eprintln!("No voice called '{id}'. Run `slc-local-tts voices` to see the list.");
-        return ExitCode::from(EXIT_UNKNOWN_VOICE);
-    };
-    let store = DiskStore::new(data.models(), HttpInstaller::new());
-    if store.is_installed(voice.archive) {
-        println!("{} is already installed.", voice.id);
-        return ExitCode::SUCCESS;
-    }
-    println!(
-        "Downloading {} ({} MB). This can take a few minutes...",
-        voice.name,
-        voice.archive.size.div_ceil(1_000_000)
-    );
-    match store.ensure_installed(voice.archive).await {
-        Ok(dir) => {
-            println!("Installed {} in {}.", voice.id, dir.display());
-            ExitCode::SUCCESS
-        }
-        Err(e) => {
-            eprintln!("Couldn't download {}: {}.", voice.id, e.reason);
-            ExitCode::FAILURE
-        }
-    }
-}
-
-/// Lowers this process's CPU priority if `config.toml` asks for it. The
-/// default, `normal`, leaves it alone: below-normal starved synthesis next
-/// to an all-core load in testing.
-fn set_priority(priority: Priority) {
-    if priority != Priority::BelowNormal {
+    if !autostart::in_install_folder(&exe) {
         return;
     }
-    // SAFETY: `GetCurrentProcess` returns a pseudo-handle for this process
-    // that is always valid and never needs closing.
-    let ok = unsafe { SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS) };
-    if ok == 0 {
-        tracing::warn!(
-            "couldn't lower SLC Local TTS's priority as config.toml asks; it runs at normal priority"
-        );
-    } else {
-        tracing::info!("running at below-normal priority (set in config.toml)");
+    if let Err(e) = autostart::refresh(&RunEntry::user(), &autostart::target_exe(&exe)) {
+        tracing::warn!("couldn't update the start-with-Windows entry ({e})");
     }
 }
 
-/// Reports a fatal error once logging is up: logged (console and file), then
-/// "Press Enter to exit" if closing would make the window vanish.
-fn fail(error: &dyn Display, owns_console: bool) -> ExitCode {
+/// Reports a fatal error once logging is up: logged, then shown in a
+/// message box, since there is no console.
+fn fail(error: &dyn Display) -> ExitCode {
     tracing::error!("{error}");
-    if owns_console {
-        console::wait_for_enter();
-    }
+    dialog::error(&error.to_string());
     ExitCode::FAILURE
-}
-
-/// Reports a fatal error from before logging could start: console only.
-fn fail_before_logging(error: &dyn Display, owns_console: bool) -> ExitCode {
-    eprintln!("{error}");
-    if owns_console {
-        console::wait_for_enter();
-    }
-    ExitCode::FAILURE
-}
-
-/// The `voices` command output: one row per voice, columns padded with
-/// spaces so they line up.
-fn voices_table(voices: &[Voice], installed: impl Fn(&Archive) -> bool) -> String {
-    let header = ["ID", "ENGINE", "INSTALLED", "NAME"];
-    let rows: Vec<[&str; 4]> = voices
-        .iter()
-        .map(|voice| {
-            let is_installed = if installed(voice.archive) {
-                "yes"
-            } else {
-                "no"
-            };
-            [voice.id, voice.engine.as_str(), is_installed, voice.name]
-        })
-        .collect();
-
-    // Each column is as wide as its widest cell, header included.
-    let mut widths = header.map(|cell| cell.chars().count());
-    for row in &rows {
-        for (width, cell) in widths.iter_mut().zip(row) {
-            *width = (*width).max(cell.chars().count());
-        }
-    }
-
-    let mut table = String::new();
-    for [id, engine, is_installed, name] in std::iter::once(&header).chain(&rows) {
-        // The last column isn't padded, so lines have no trailing spaces.
-        // `writeln!` into a `String` can't fail, so its result is ignored.
-        let _ = writeln!(
-            table,
-            "{id:<w0$}  {engine:<w1$}  {is_installed:<w2$}  {name}",
-            w0 = widths[0],
-            w1 = widths[1],
-            w2 = widths[2],
-        );
-    }
-    table
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::CommandFactory;
 
     #[test]
-    fn cli_defaults_to_serve() {
-        let cli = Cli::try_parse_from(["slc-local-tts"]).unwrap();
+    fn gui_cli_default_is_server() {
+        let cli = GuiCli::try_parse_from(["slc-local-tts"]).unwrap();
         assert_eq!(cli.command, None);
     }
 
     #[test]
-    fn voices_table_lists_joe() {
-        let table = voices_table(slc_local_tts::catalog::voices(), |_| false);
-        let mut lines = table.lines();
-        assert!(lines.next().unwrap().starts_with("ID"), "{table}");
-        let joe = table
-            .lines()
-            .find(|line| line.starts_with("en_US-joe-medium "))
-            .unwrap_or_else(|| panic!("no joe line in:\n{table}"));
-        let mut rest = joe;
-        for part in ["en_US-joe-medium", "piper", "no", "Joe (US, medium, Piper)"] {
-            let at = rest
-                .find(part)
-                .unwrap_or_else(|| panic!("{part} missing or out of order in: {joe}"));
-            rest = &rest[at + part.len()..];
-        }
-    }
-
-    #[test]
-    fn second_copy_never_applies_an_update() {
-        let mut applied = false;
-        let gate = serve_gate(
-            || Err::<(), _>(instance::AlreadyRunning),
-            || {
-                applied = true;
-                Ok(true)
-            },
-        );
-        assert!(matches!(gate, Gate::AlreadyRunning(_)));
-        assert!(!applied, "a second copy must never apply an update");
-    }
-
-    #[test]
-    fn pending_update_restarts_instead_of_serving() {
-        let gate = serve_gate(|| Ok("guard"), || Ok(true));
-        assert!(matches!(gate, Gate::Restarting));
-    }
-
-    #[test]
-    fn failed_apply_still_serves() {
-        let gate = serve_gate(
-            || Ok("guard"),
-            || {
-                Err(update::UpdateError::Other(
-                    "Update.exe is missing".to_string(),
-                ))
-            },
-        );
-        assert!(matches!(gate, Gate::Serve("guard")));
-    }
-
-    #[test]
-    fn nothing_pending_serves() {
-        let gate = serve_gate(|| Ok("guard"), || Ok(false));
-        assert!(matches!(gate, Gate::Serve("guard")));
-    }
-
-    #[test]
-    fn cli_parses_download() {
-        let cli = Cli::try_parse_from(["slc-local-tts", "download", "M1"]).unwrap();
+    fn gui_cli_parses_window() {
+        let cli =
+            GuiCli::try_parse_from(["slc-local-tts", "window", "--port", "9000", "--first-run"])
+                .unwrap();
         assert_eq!(
             cli.command,
-            Some(Command::Download {
-                voice: "M1".to_string()
+            Some(GuiCommand::Window {
+                port: 9000,
+                first_run: true
             })
         );
+    }
+
+    #[test]
+    fn window_subcommand_hidden_from_help() {
+        let help = GuiCli::command().render_help().to_string();
+        assert!(!help.contains("window"), "{help}");
     }
 }

@@ -33,6 +33,7 @@ use slc_local_tts::frontend::espeak::{self, CHECK_IPA, CHECK_TEXT};
 use slc_local_tts::models::DiskStore;
 use slc_local_tts::models::install::HttpInstaller;
 use slc_local_tts::paths::DataDir;
+use slc_local_tts::status::Live;
 
 /// Long enough for a first run's downloads, so a slow connection doesn't
 /// turn into a 503. The real server uses `SPEECH_BUDGET` (9 s).
@@ -93,6 +94,7 @@ fn real_app() -> NormalizePath<Router> {
         synth: Arc::new(SherpaSynthesizer::new(&config)),
         synth_lock: Arc::new(tokio::sync::Mutex::new(())),
         load_cooldown: LoadCooldown::default(),
+        live: Live::new(None),
         settings: ApiSettings {
             // Matches the `Host` that `post_json` sends; nothing is bound.
             port: PORT,
@@ -100,6 +102,7 @@ fn real_app() -> NormalizePath<Router> {
             preview_budget: BUDGET,
             base_speed: config.base_speed,
         },
+        app_info: common::test_app_info(),
     }))
 }
 

@@ -38,6 +38,7 @@ $packDir   = Join-Path $repoRoot 'target\pack'
 $filesDir  = Join-Path $packDir 'files'
 $notesFile = Join-Path $packDir 'release-notes.md'
 $exeName   = 'slc-local-tts.exe'
+$cliName   = 'slc-local-tts-cli.exe'
 if (-not $OutputDir) {
     $OutputDir = Join-Path $repoRoot 'target\velopack\Releases'
 }
@@ -106,13 +107,16 @@ try {
 $noticesFile = Join-Path $repoRoot 'target\notices\THIRD_PARTY_NOTICES.txt'
 & (Join-Path $PSScriptRoot 'make-notices.ps1') -OutFile $noticesFile
 
-# Step 5: the staging folder, recreated so it holds exactly the three files
-# that get installed.
+# Step 5: the staging folder, recreated so it holds exactly the four files
+# that get installed: the tray app (the one Velopack starts), the console
+# version for the voices, download and serve commands, and the two licence
+# files.
 if (Test-Path -LiteralPath $filesDir) {
     Remove-Item -LiteralPath $filesDir -Recurse -Force
 }
 [System.IO.Directory]::CreateDirectory($filesDir) | Out-Null
 Copy-Item -LiteralPath (Join-Path $repoRoot "target\release\$exeName") -Destination (Join-Path $filesDir $exeName)
+Copy-Item -LiteralPath (Join-Path $repoRoot "target\release\$cliName") -Destination (Join-Path $filesDir $cliName)
 Copy-Item -LiteralPath (Join-Path $repoRoot 'LICENSE') -Destination (Join-Path $filesDir 'LICENSE.txt')
 Copy-Item -LiteralPath $noticesFile -Destination (Join-Path $filesDir 'THIRD_PARTY_NOTICES.txt')
 

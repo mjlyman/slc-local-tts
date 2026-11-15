@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use crate::audio::Audio;
-use crate::catalog::{Engine, Voice};
+use crate::catalog::{Archive, Engine, Voice};
 use crate::config::BaseSpeeds;
 
 /// Lowest and highest speed sent to Piper and Kokoro.
@@ -36,6 +36,10 @@ pub trait Synthesizer: Send + Sync + 'static {
 
     /// Unloads models unused for at least `idle_for`; returns how many.
     fn unload_idle(&self, idle_for: Duration) -> usize;
+
+    /// Unloads `archive`'s model, so its files can be deleted; returns true
+    /// if it was loaded. Call only while holding the global synthesis lock.
+    fn unload(&self, archive: &'static Archive) -> bool;
 }
 
 /// Engine-ready input produced by [`Synthesizer::prepare`].

@@ -18,6 +18,7 @@ use slc_local_tts::api::cooldown::LoadCooldown;
 use slc_local_tts::api::{ApiSettings, AppState, app};
 use slc_local_tts::config::BaseSpeeds;
 use slc_local_tts::server;
+use slc_local_tts::status::Live;
 
 /// How long any one read may wait before the test fails instead of hanging.
 const READ_TIMEOUT: Duration = Duration::from_secs(10);
@@ -55,6 +56,7 @@ async fn expect_100_continue_over_real_socket() {
         synth: Arc::new(FakeSynth::default()),
         synth_lock: Arc::new(tokio::sync::Mutex::new(())),
         load_cooldown: LoadCooldown::default(),
+        live: Live::new(None),
         settings: ApiSettings {
             // The host guard only accepts requests addressed to this port.
             port,
@@ -62,6 +64,7 @@ async fn expect_100_continue_over_real_socket() {
             preview_budget: Duration::from_secs(5),
             base_speed: BaseSpeeds::default(),
         },
+        app_info: common::test_app_info(),
     });
     // See `Started::serve` in src/server.rs for why the turbofish is needed.
     let service = ServiceExt::<Request>::into_make_service(app(state));

@@ -21,6 +21,7 @@ async fn start_unpacks_privately_and_restores_tmp() {
             port: 0,
             ..Config::default()
         },
+        server::ServerOptions::default(),
     )
     .await
     .expect("server::start failed");

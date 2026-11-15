@@ -19,12 +19,13 @@ use std::future::Future;
 use std::io::{self, BufReader};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
 
+use super::FailureKind;
 use crate::catalog::Archive;
 
 /// Name of the manifest file written into every installed model folder.
@@ -33,6 +34,9 @@ const MARKER: &str = ".verified";
 const TMP_DIR: &str = ".tmp";
 /// Suffix for model folders that failed verification.
 const BROKEN_SUFFIX: &str = ".broken";
+/// Suffix for a model folder being deleted. The folder is renamed first, so
+/// a delete that stops halfway never leaves a half-deleted voice in place.
+const DELETING_SUFFIX: &str = ".deleting";
 /// Suffixes of the scratch entries for one archive in `models\.tmp\`.
 const PART_SUFFIX: &str = ".part";
 const EXTRACT_SUFFIX: &str = ".extract";
@@ -100,6 +104,16 @@ impl InstallError {
             InstallError::HashMismatch { .. } | InstallError::SizeMismatch { .. }
         )
     }
+
+    /// Which kind of failure this is, for the settings window and for the
+    /// Download button, which retries anything but a permanent failure.
+    pub fn failure_kind(&self) -> FailureKind {
+        match self {
+            InstallError::Network(_) | InstallError::HttpStatus(_) => FailureKind::Network,
+            _ if self.is_permanent() => FailureKind::Permanent,
+            _ => FailureKind::Other,
+        }
+    }
 }
 
 impl From<io::Error> for InstallError {
@@ -108,13 +122,75 @@ impl From<io::Error> for InstallError {
     }
 }
 
-/// Installs one archive into `models_dir` and returns the model folder.
+/// How much of one download has arrived, shared between the installer that
+/// updates it and anyone showing it.
+///
+/// Cloning is cheap and shares the same counter (it's an `Arc`), so the
+/// model store keeps one clone to read while the installer writes another.
+#[derive(Clone)]
+pub struct Progress(Arc<ProgressInner>);
+
+struct ProgressInner {
+    total: u64,
+    /// An atomic, so `set` and `get` need no lock and never wait.
+    done: AtomicU64,
+    /// Called when the whole percentage changes.
+    notify: Option<Arc<dyn Fn() + Send + Sync>>,
+}
+
+impl Progress {
+    /// Progress towards `total` bytes, starting at 0. `notify` is called
+    /// each time the whole percentage changes, so a 300 MB download calls it
+    /// about 100 times rather than once per network chunk.
+    pub fn new(total: u64, notify: Option<Arc<dyn Fn() + Send + Sync>>) -> Progress {
+        Progress(Arc::new(ProgressInner {
+            total,
+            done: AtomicU64::new(0),
+            notify,
+        }))
+    }
+
+    /// Records that `done` bytes have arrived.
+    pub fn set(&self, done: u64) {
+        // Relaxed is enough: the counter is the only data shared through it.
+        let before = self.0.done.swap(done, Ordering::Relaxed);
+        if self.percent(before) != self.percent(done)
+            && let Some(notify) = &self.0.notify
+        {
+            notify();
+        }
+    }
+
+    /// `(done, total)` in bytes.
+    pub fn get(&self) -> (u64, u64) {
+        (self.0.done.load(Ordering::Relaxed), self.0.total)
+    }
+
+    fn percent(&self, done: u64) -> u64 {
+        done.saturating_mul(100) / self.0.total.max(1)
+    }
+}
+
+impl std::fmt::Debug for Progress {
+    // Written by hand: the `notify` closure can't be printed.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (done, total) = self.get();
+        f.debug_struct("Progress")
+            .field("done", &done)
+            .field("total", &total)
+            .finish()
+    }
+}
+
+/// Installs one archive into `models_dir` and returns the model folder,
+/// reporting the bytes downloaded so far to `progress`.
 /// A trait so the model store can be tested with a fake.
 pub trait Installer: Send + Sync + 'static {
     fn install(
         &self,
         archive: &'static Archive,
         models_dir: &Path,
+        progress: &Progress,
     ) -> impl Future<Output = Result<PathBuf, InstallError>> + Send;
 }
 
@@ -140,6 +216,7 @@ impl HttpInstaller {
         &self,
         archive: &Archive,
         part: &Path,
+        progress: &Progress,
     ) -> Result<(u64, String), InstallError> {
         let mut response = self
             .client
@@ -176,6 +253,7 @@ impl HttpInstaller {
             }
             hasher.update(&chunk);
             out.write_all(&chunk).await?;
+            progress.set(got);
 
             let tenths = got * 10 / archive.size.max(1);
             if tenths > logged_tenths {
@@ -199,6 +277,7 @@ impl Installer for HttpInstaller {
         &self,
         archive: &'static Archive,
         models_dir: &Path,
+        progress: &Progress,
     ) -> Result<PathBuf, InstallError> {
         let tmp = models_dir.join(TMP_DIR);
         fs::create_dir_all(&tmp)?;
@@ -226,7 +305,7 @@ impl Installer for HttpInstaller {
             _lock: lock,
         };
 
-        let (got, sha256) = self.download(archive, &part).await?;
+        let (got, sha256) = self.download(archive, &part, progress).await?;
         if got != archive.size {
             return Err(InstallError::SizeMismatch {
                 expected: archive.size,
@@ -355,6 +434,21 @@ async fn wait_for_install_lock(tmp: &Path, stem: &str) -> Result<fs::File, Insta
             }
             Err(fs::TryLockError::Error(e)) => return Err(lock_error(&path, &e)),
         }
+    }
+}
+
+/// Takes `models\.tmp\<stem>.lock` if nobody holds it, without waiting.
+/// `None` means another handle holds it: another copy of SLC Local TTS (or
+/// this one) is installing the archive. The returned `File` is the lock:
+/// closing it releases it.
+pub fn try_install_lock(models_dir: &Path, stem: &str) -> io::Result<Option<fs::File>> {
+    let tmp = models_dir.join(TMP_DIR);
+    fs::create_dir_all(&tmp)?;
+    let file = open_lock_file(&tmp.join(format!("{stem}{LOCK_SUFFIX}")))?;
+    match file.try_lock() {
+        Ok(()) => Ok(Some(file)),
+        Err(fs::TryLockError::WouldBlock) => Ok(None),
+        Err(fs::TryLockError::Error(e)) => Err(e),
     }
 }
 
@@ -517,8 +611,33 @@ pub fn quarantine(dir: &Path) -> io::Result<()> {
     rename_with_retry(dir, &broken)
 }
 
-/// Deletes the download leftovers in `models\.tmp\` and every
-/// `models\*.broken`. Run at server startup, before this process starts any
+/// The quick first half of deleting `models\<stem>`: removes its `.verified`
+/// marker, so the folder stops counting as installed even if the rest
+/// fails, then renames it to `<stem>.deleting` for the caller to remove.
+/// Returns the renamed folder, or `None` if there was no folder.
+///
+/// Call it while holding the archive's install lock, so no install can be
+/// moving files into the folder meanwhile.
+pub fn begin_delete(models_dir: &Path, stem: &str) -> io::Result<Option<PathBuf>> {
+    let dir = models_dir.join(stem);
+    match fs::remove_file(dir.join(MARKER)) {
+        Ok(()) => {}
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e),
+    }
+    if !dir.exists() {
+        return Ok(None);
+    }
+    let deleting = models_dir.join(format!("{stem}{DELETING_SUFFIX}"));
+    // Left by an earlier delete that couldn't finish; it would block the
+    // rename.
+    remove_if_present(&deleting)?;
+    rename_with_retry(&dir, &deleting)?;
+    Ok(Some(deleting))
+}
+
+/// Deletes the download leftovers in `models\.tmp\`, every `models\*.broken`
+/// and every `models\*.deleting`. Run at server startup, before this process starts any
 /// install.
 ///
 /// Another copy of SLC Local TTS (the `download` command) may be installing
@@ -534,7 +653,9 @@ pub fn clean_leftovers(models_dir: &Path) -> io::Result<()> {
     };
     for entry in entries {
         let entry = entry?;
-        if !entry.file_name().to_string_lossy().ends_with(BROKEN_SUFFIX) {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !name.ends_with(BROKEN_SUFFIX) && !name.ends_with(DELETING_SUFFIX) {
             continue;
         }
         if entry.file_type()?.is_dir() {
@@ -791,6 +912,11 @@ mod tests {
         }))
     }
 
+    /// A progress tracker nobody watches, for tests that don't check it.
+    fn no_progress(archive: &Archive) -> Progress {
+        Progress::new(archive.size, None)
+    }
+
     /// A served fixture plus a matching catalog entry.
     async fn good_archive() -> &'static Archive {
         let bytes = fixture_archive();
@@ -809,7 +935,7 @@ mod tests {
         let models = tmp.path().join("models");
 
         let dir = HttpInstaller::new()
-            .install(archive, &models)
+            .install(archive, &models, &no_progress(archive))
             .await
             .unwrap();
 
@@ -873,7 +999,8 @@ mod tests {
 
         // Box the future so `drop` really destroys it, as a cancel would.
         let installer = HttpInstaller::new();
-        let mut install = Box::pin(installer.install(archive, &models));
+        let progress = no_progress(archive);
+        let mut install = Box::pin(installer.install(archive, &models, &progress));
         // Drive it until the download has started (the `.part` exists).
         let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
         while !part.exists() {
@@ -928,7 +1055,7 @@ mod tests {
         let models = tmp.path().join("models");
 
         let err = HttpInstaller::new()
-            .install(archive, &models)
+            .install(archive, &models, &no_progress(archive))
             .await
             .unwrap_err();
 
@@ -952,7 +1079,7 @@ mod tests {
         std::fs::write(stale.join(".verified"), "deadbeef  http://old\n").unwrap();
 
         let dir = HttpInstaller::new()
-            .install(archive, &models)
+            .install(archive, &models, &no_progress(archive))
             .await
             .unwrap();
 
@@ -974,7 +1101,7 @@ mod tests {
         let models = tmp.path().join("models");
 
         let err = HttpInstaller::new()
-            .install(archive, &models)
+            .install(archive, &models, &no_progress(archive))
             .await
             .unwrap_err();
 
@@ -1002,7 +1129,7 @@ mod tests {
         let models = tmp.path().join("models");
 
         let err = HttpInstaller::new()
-            .install(archive, &models)
+            .install(archive, &models, &no_progress(archive))
             .await
             .unwrap_err();
 
@@ -1023,7 +1150,7 @@ mod tests {
         let models = tmp.path().join("models");
 
         let err = HttpInstaller::new()
-            .install(archive, &models)
+            .install(archive, &models, &no_progress(archive))
             .await
             .unwrap_err();
 
@@ -1047,7 +1174,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
 
         let err = HttpInstaller::new()
-            .install(archive, &tmp.path().join("models"))
+            .install(archive, &tmp.path().join("models"), &no_progress(archive))
             .await
             .unwrap_err();
 
@@ -1103,7 +1230,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let models = tmp.path().join("models");
         let dir = HttpInstaller::new()
-            .install(archive, &models)
+            .install(archive, &models, &no_progress(archive))
             .await
             .unwrap();
         assert!(verify_files(&dir).unwrap());
@@ -1243,7 +1370,8 @@ mod tests {
         let other_copy = hold_lock(&models);
 
         let installer = HttpInstaller::new();
-        let mut install = Box::pin(installer.install(archive, &models));
+        let progress = no_progress(archive);
+        let mut install = Box::pin(installer.install(archive, &models, &progress));
         let waited = tokio::time::timeout(Duration::from_millis(300), &mut install).await;
         assert!(waited.is_err(), "install didn't wait: {waited:?}");
         assert_eq!(requests.load(Ordering::SeqCst), 0);
@@ -1278,7 +1406,8 @@ mod tests {
         let other_copy = hold_lock(&models);
 
         let installer = HttpInstaller::new();
-        let mut install = Box::pin(installer.install(archive, &models));
+        let progress = no_progress(archive);
+        let mut install = Box::pin(installer.install(archive, &models, &progress));
         let waited = tokio::time::timeout(Duration::from_millis(300), &mut install).await;
         assert!(waited.is_err(), "install didn't wait: {waited:?}");
         assert_eq!(requests.load(Ordering::SeqCst), 0);
@@ -1347,6 +1476,107 @@ mod tests {
             newcomer.try_lock(),
             Err(fs::TryLockError::WouldBlock)
         ));
+    }
+
+    #[test]
+    fn clean_leftovers_removes_deleting() {
+        let tmp = tempfile::tempdir().unwrap();
+        let models = tmp.path();
+        let deleting = models.join("old-voice.deleting");
+        std::fs::create_dir_all(deleting.join("sub")).unwrap();
+        std::fs::write(deleting.join("sub").join("m.onnx"), b"m").unwrap();
+        std::fs::create_dir_all(models.join("good-voice")).unwrap();
+
+        clean_leftovers(models).unwrap();
+
+        assert!(!deleting.exists());
+        assert!(models.join("good-voice").is_dir());
+    }
+
+    #[test]
+    fn try_install_lock_is_none_while_held_and_some_after() {
+        let tmp = tempfile::tempdir().unwrap();
+        let models = tmp.path().join("models");
+
+        // Creates `.tmp` and the lock file when neither exists yet.
+        let first = try_install_lock(&models, STEM).unwrap();
+        assert!(first.is_some());
+        assert!(models.join(".tmp").join(format!("{STEM}.lock")).is_file());
+
+        // Never waits: a held lock gives `None` straight away.
+        assert!(try_install_lock(&models, STEM).unwrap().is_none());
+
+        drop(first);
+        assert!(try_install_lock(&models, STEM).unwrap().is_some());
+    }
+
+    #[test]
+    fn progress_notifies_on_whole_percent_only() {
+        let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = Arc::clone(&count);
+        let progress = Progress::new(
+            1_000_000,
+            Some(Arc::new(move || {
+                counter.fetch_add(1, Ordering::SeqCst);
+            })),
+        );
+
+        for step in 1..=10_000u64 {
+            progress.set(step * 100);
+        }
+
+        assert_eq!(count.load(Ordering::SeqCst), 100);
+        assert_eq!(progress.get(), (1_000_000, 1_000_000));
+    }
+
+    #[tokio::test]
+    async fn http_install_reports_final_progress() {
+        let archive = good_archive().await;
+        let tmp = tempfile::tempdir().unwrap();
+        let progress = Progress::new(archive.size, None);
+
+        HttpInstaller::new()
+            .install(archive, &tmp.path().join("models"), &progress)
+            .await
+            .unwrap();
+
+        assert_eq!(progress.get(), (archive.size, archive.size));
+    }
+
+    #[test]
+    fn failure_kinds() {
+        assert_eq!(
+            InstallError::Network("x".into()).failure_kind(),
+            FailureKind::Network
+        );
+        assert_eq!(
+            InstallError::HttpStatus(503).failure_kind(),
+            FailureKind::Network
+        );
+        assert_eq!(
+            InstallError::HashMismatch {
+                expected: "a".into(),
+                got: "b".into()
+            }
+            .failure_kind(),
+            FailureKind::Permanent
+        );
+        assert_eq!(
+            InstallError::SizeMismatch {
+                expected: 1,
+                got: 2
+            }
+            .failure_kind(),
+            FailureKind::Permanent
+        );
+        assert_eq!(
+            InstallError::DiskSpace { needed: 1, free: 0 }.failure_kind(),
+            FailureKind::Other
+        );
+        assert_eq!(
+            InstallError::Io("x".into()).failure_kind(),
+            FailureKind::Other
+        );
     }
 
     #[test]
