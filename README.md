@@ -457,13 +457,18 @@ it is unset or empty, the update check reads GitHub.
 
 ### Releasing
 
-1. Bump `version` in `Cargo.toml` (and `Cargo.lock`, by building), then
-   commit.
+1. Bump `version` in `Cargo.toml` (and `Cargo.lock`, by building), add a
+   `## <version>` section to `CHANGELOG.md` saying what's new for users, and
+   commit both together.
 2. Push a tag `v<version>`, for example `v0.2.0`.
 
 `.github/workflows/release.yml` runs on that tag. It fails unless the tag
 matches the `Cargo.toml` version. It runs the tests, packs the release,
 uploads it with `vpk upload github`, and publishes the GitHub release.
+The release notes start with that version's `CHANGELOG.md` section, and
+`cargo test` fails if the section is missing, so run the tests before you
+tag. CI runs on pull requests only; to run it on a pushed branch, start the
+`ci` workflow by hand from the repository's Actions tab.
 
 ### Commands
 

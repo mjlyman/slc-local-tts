@@ -121,8 +121,33 @@ Copy-Item -LiteralPath (Join-Path $repoRoot 'LICENSE') -Destination (Join-Path $
 Copy-Item -LiteralPath $noticesFile -Destination (Join-Path $filesDir 'THIRD_PARTY_NOTICES.txt')
 
 # Step 6: the release notes, UTF-8 without a BOM, with LF line endings.
+# What's new comes from this version's section of CHANGELOG.md: the lines
+# after the line "## <version>", up to the next "## " heading, with blank
+# lines at either end dropped. tests/changelog.rs checks the same rule, so
+# cargo test fails first if the section is missing.
+$changelogFile = Join-Path $repoRoot 'CHANGELOG.md'
+if (-not (Test-Path -LiteralPath $changelogFile)) {
+    throw "CHANGELOG.md is missing from $repoRoot. It holds the release notes for each version."
+}
+$whatsNew = New-Object System.Collections.Generic.List[string]
+$inSection = $false
+foreach ($line in [System.IO.File]::ReadAllLines($changelogFile)) {
+    $line = $line.TrimEnd()
+    if ($inSection) {
+        if ($line.StartsWith('## ')) { break }
+        $whatsNew.Add($line)
+    } elseif ($line -ceq "## $version") {
+        $inSection = $true
+    }
+}
+$whatsNewText = ($whatsNew -join "`n").Trim()
+if (-not $whatsNewText) {
+    throw "CHANGELOG.md has no notes for version $version. Add a '## $version' heading with what's new for users under it, commit it, and pack again."
+}
 $notes = @(
     "SLC Local TTS $version",
+    "",
+    $whatsNewText,
     "",
     "To install, download SLC-Local-TTS-win-Setup.exe below and run it. If Windows SmartScreen stops it, click `"More info`", then `"Run anyway`". An installed copy updates itself.",
     "",

@@ -1,11 +1,11 @@
 name: ci
 
-# Branch pushes only: a bare `push:` also fires on tags, and a release tag
-# points at a commit this workflow has already tested on its branch.
+# Pull requests only, to save Actions minutes: pushes don't run this.
+# release.yml runs the same tests on a release tag, and the Actions tab
+# can start this workflow by hand on any branch (workflow_dispatch).
 on:
-  push:
-    branches: ['**']
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
