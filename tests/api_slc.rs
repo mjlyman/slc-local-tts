@@ -10,10 +10,12 @@ use std::time::Duration;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use serde_json::json;
+use tower_http::normalize_path::NormalizePath;
 
 use common::{
     FakeStore, FakeSynth, HOST, TestResponse, capture_logs_at, get, get_with, post_json, send,
-    slc_delete, slc_get, slc_post, state, state_with, state_with_app_info, test_app, test_app_info,
+    slc_delete, slc_get, slc_post, slc_put_json, state, state_with, state_with_app_info, test_app,
+    test_app_info,
 };
 use slc_local_tts::api::AppInfo;
 use slc_local_tts::api::slc::{CLIENT_HEADER, CLIENT_VALUE};
@@ -74,6 +76,26 @@ async fn slc_routes_need_client_header() {
         let wrong = get_with(&app, uri, HOST, &[(CLIENT_HEADER, "browser")]).await;
         assert_forbidden_client(&wrong);
     }
+}
+
+#[tokio::test]
+async fn volume_put_needs_client_header() {
+    let app = test_app(state(2_000));
+    let put = |client: Option<&str>| {
+        let mut builder = Request::put("/slc/settings/volume")
+            .header("host", HOST)
+            .header("content-type", "application/json");
+        if let Some(value) = client {
+            builder = builder.header(CLIENT_HEADER, value);
+        }
+        builder
+            .body(Body::from(json!({"percent": 150}).to_string()))
+            .unwrap()
+    };
+    assert_forbidden_client(&send(&app, put(None)).await);
+    assert_forbidden_client(&send(&app, put(Some("browser"))).await);
+    let v = slc_get(&app, "/slc/status").await.json();
+    assert_eq!(v["config"]["volume_percent"], 100, "{v}");
 }
 
 #[tokio::test]
@@ -482,6 +504,47 @@ async fn polling_does_not_log_at_info() {
         .unwrap_or_else(|| panic!("no line for the refused request: {refused}"));
     assert!(line.contains("WARN"), "{line}");
     assert!(line.contains("403"), "{line}");
+}
+
+// ---------------------------------------------------------------- volume
+
+const VOLUME_URI: &str = "/slc/settings/volume";
+
+/// The `config.volume_percent` the status route reports.
+async fn status_volume(app: &NormalizePath<axum::Router>) -> serde_json::Value {
+    slc_get(app, "/slc/status").await.json()["config"]["volume_percent"].clone()
+}
+
+#[tokio::test]
+async fn volume_put_changes_live_volume() {
+    let app = test_app(state(2_000));
+    let resp = slc_put_json(&app, VOLUME_URI, json!({"percent": 150})).await;
+    assert_eq!(resp.status, StatusCode::NO_CONTENT);
+    assert_eq!(status_volume(&app).await, 150);
+}
+
+#[tokio::test]
+async fn volume_put_out_of_range_is_400() {
+    let app = test_app(state(2_000));
+    for percent in [49, 201] {
+        let resp = slc_put_json(&app, VOLUME_URI, json!({"percent": percent})).await;
+        assert_eq!(resp.status, StatusCode::BAD_REQUEST, "{percent}");
+    }
+    assert_eq!(status_volume(&app).await, 100);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn volume_put_logs_at_info() {
+    let app = test_app(state(2_000));
+    let (logs, _capture) = capture_logs_at(tracing::Level::INFO);
+    let resp = slc_put_json(&app, VOLUME_URI, json!({"percent": 150})).await;
+    assert_eq!(resp.status, StatusCode::NO_CONTENT);
+    let contents = logs.contents();
+    let lines: Vec<&str> = contents
+        .lines()
+        .filter(|line| line.contains("INFO") && line.contains("150"))
+        .collect();
+    assert_eq!(lines.len(), 1, "{contents}");
 }
 
 // ---------------------------------------------------------------- update

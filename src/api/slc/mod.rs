@@ -1,6 +1,6 @@
 //! The private `/slc/` routes the settings window reads and drives: the
-//! status, the voice models, downloads, deletes, the recent requests and
-//! "Restart and update now".
+//! status, the voice models, downloads, deletes, the recent requests, the
+//! speech volume and "Restart and update now".
 //!
 //! Only the window may use them. Every request must carry
 //! [`CLIENT_HEADER`]`: `[`CLIENT_VALUE`], and any request with an `Origin`
@@ -14,14 +14,15 @@ pub mod dto;
 
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use std::time::SystemTime;
 
-use axum::extract::rejection::QueryRejection;
+use axum::extract::rejection::{JsonRejection, QueryRejection};
 use axum::extract::{Path, Query, Request, State};
 use axum::http::{StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use serde::Deserialize;
 
@@ -30,12 +31,13 @@ use super::error::{AppError, error_response};
 use super::manage::delete_model;
 use super::voices::{accent_label, gender_label};
 use crate::catalog::{self, Archive};
+use crate::config::{Config, VOLUME_MAX, VOLUME_MIN};
 use crate::engine::Synthesizer;
 use crate::models::{DeleteError, ModelState, ModelStore, StartDownload};
 use crate::status::unix_ms;
 use crate::stop::StopReason;
 use crate::update::UpdateState;
-use dto::{ActivityDto, DownloadDto, ModelDto, RequestsDto, StatusDto, VoiceDto};
+use dto::{ActivityDto, DownloadDto, ModelDto, RequestsDto, StatusDto, VoiceDto, VolumeDto};
 
 /// The header every request to these routes must carry...
 pub const CLIENT_HEADER: &str = "X-SLC-Local-TTS-Client";
@@ -64,6 +66,7 @@ pub fn routes<S: ModelStore, Y: Synthesizer>() -> Router<Arc<AppState<S, Y>>> {
         .route("/slc/models/{stem}/download", post(download::<S, Y>))
         .route("/slc/models/{stem}", delete(remove::<S, Y>))
         .route("/slc/requests", get(requests::<S, Y>))
+        .route("/slc/settings/volume", put(set_volume::<S, Y>))
         .route("/slc/update/apply", post(apply_update::<S, Y>))
         // The 405 answer for a known path asked with another method (such
         // as a browser's `OPTIONS` preflight), set here so the guard below
@@ -143,7 +146,10 @@ pub fn status_snapshot<S: ModelStore, Y: Synthesizer>(
         update: info.updates.borrow().clone(),
         can_restart_to_update: info.can_restart_to_update,
         updated_to: info.updated_to.clone(),
-        config: info.config.clone(),
+        config: Config {
+            volume_percent: state.volume_percent.load(Ordering::Relaxed),
+            ..info.config.clone()
+        },
     }
 }
 
@@ -236,6 +242,24 @@ async fn remove<S: ModelStore, Y: Synthesizer>(
             )
         }
     }
+}
+
+/// `PUT /slc/settings/volume`: changes how loud speech is, from the next
+/// line on. 204 on success; a volume outside 50 to 200 is a 400.
+async fn set_volume<S: ModelStore, Y: Synthesizer>(
+    State(state): State<Arc<AppState<S, Y>>>,
+    body: Result<Json<VolumeDto>, JsonRejection>,
+) -> Result<StatusCode, AppError> {
+    let Json(VolumeDto { percent }) =
+        body.map_err(|rejection| AppError::InvalidRequest(rejection.body_text()))?;
+    if !(VOLUME_MIN..=VOLUME_MAX).contains(&percent) {
+        return Err(AppError::InvalidRequest(format!(
+            "the volume must be between {VOLUME_MIN} and {VOLUME_MAX} percent, but it was {percent}"
+        )));
+    }
+    state.volume_percent.store(percent, Ordering::Relaxed);
+    tracing::info!(percent, "speech volume changed");
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// `POST /slc/update/apply`: "Restart and update now". With an update

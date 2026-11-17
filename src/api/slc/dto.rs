@@ -34,7 +34,9 @@ pub struct StatusDto {
     pub can_restart_to_update: bool,
     /// The version this copy was just updated to, right after an update.
     pub updated_to: Option<String>,
-    /// The settings the server started with.
+    /// The settings the server started with, except `volume_percent`, which
+    /// is the volume in use now (the settings window can change it while
+    /// the server runs).
     pub config: Config,
 }
 
@@ -100,6 +102,13 @@ pub struct RequestsDto {
     pub records: Vec<RequestRecord>,
     /// The `seq` of the newest record the server holds.
     pub latest_seq: u64,
+}
+
+/// `PUT /slc/settings/volume`: the new speech volume.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct VolumeDto {
+    /// How loud speech is, in percent, from 50 to 200.
+    pub percent: u16,
 }
 
 #[cfg(test)]

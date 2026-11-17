@@ -381,3 +381,183 @@ fn unreadable_file_says_why() {
             .is_some()
     );
 }
+
+/// The Speech volume slider's label.
+const VOLUME: &str = "Speech volume";
+
+/// `defaults()` with the volume at `percent`.
+fn at_volume(percent: u16) -> FileSettings {
+    FileSettings {
+        volume_percent: percent,
+        ..defaults()
+    }
+}
+
+/// Gives the volume slider the keyboard focus.
+fn focus_volume(harness: &mut Harness<'static, WindowApp>) {
+    harness.get_by_role_and_label(Role::Slider, VOLUME).focus();
+    harness.run();
+}
+
+/// Drags the volume slider's handle past its right end (or left end) and
+/// lets go, as the user would with the mouse.
+fn drag_volume_to_end(harness: &mut Harness<'static, WindowApp>, right: bool) {
+    let end = hold_volume_past_end(harness, right);
+    harness.drop_at(end);
+    harness.run();
+}
+
+/// Presses the volume slider's handle and drags it past the slider's
+/// right end (or left end), leaving the button held. Returns where the
+/// pointer is.
+fn hold_volume_past_end(harness: &mut Harness<'static, WindowApp>, right: bool) -> egui::Pos2 {
+    let rect = harness.get_by_role_and_label(Role::Slider, VOLUME).rect();
+    harness.drag_at(rect.center());
+    harness.run();
+    let x = if right {
+        rect.right() + 50.0
+    } else {
+        rect.left() - 50.0
+    };
+    let end = egui::pos2(x, rect.center().y);
+    harness.hover_at(end);
+    harness.run();
+    end
+}
+
+/// The volume slider's value, as screen readers read it.
+fn volume_value(harness: &Harness<'static, WindowApp>) -> Option<String> {
+    harness.get_by_role_and_label(Role::Slider, VOLUME).value()
+}
+
+#[test]
+fn volume_slider_shows_the_file_value() {
+    let harness = settings_page(with_file(at_volume(120)));
+    assert_eq!(volume_value(&harness).as_deref(), Some("120%"));
+}
+
+#[test]
+fn volume_keyboard_step_saves() {
+    let mut harness = settings_page(with_file(defaults()));
+    focus_volume(&mut harness);
+    harness.key_press(egui::Key::ArrowRight);
+    harness.run();
+    assert_eq!(actions(), vec![save(at_volume(105))]);
+}
+
+#[test]
+fn volume_slider_stops_at_200() {
+    let mut harness = settings_page(with_file(at_volume(200)));
+    focus_volume(&mut harness);
+    harness.key_press(egui::Key::ArrowRight);
+    harness.run();
+    assert_eq!(actions(), Vec::<Action>::new());
+}
+
+#[test]
+fn volume_note_shown() {
+    let harness = settings_page(with_file(defaults()));
+    assert!(
+        harness
+            .query_by_label(
+                "Applies to new announcements at once; press Play on the Voices page to hear \
+                 it. Lines SLC has already saved keep their old volume until you clear its \
+                 cache (see the README)."
+            )
+            .is_some()
+    );
+}
+
+#[test]
+fn volume_saved_once_when_a_drag_ends() {
+    let mut harness = settings_page(with_file(defaults()));
+    let end = hold_volume_past_end(&mut harness, true);
+    // Nothing is saved while the handle is held, but it follows the drag.
+    assert_eq!(actions(), Vec::<Action>::new());
+    assert_eq!(volume_value(&harness).as_deref(), Some("200%"));
+    harness.drop_at(end);
+    harness.run();
+    assert_eq!(actions(), vec![save(at_volume(200))]);
+}
+
+/// `file` in `config.toml`, after `saves` settings saves have come back.
+fn after_saves(file: FileSettings, saves: u64) -> Snapshot {
+    Snapshot {
+        settings_saves: saves,
+        ..with_file(file)
+    }
+}
+
+/// A volume save from `from` to `to`, over the defaults.
+fn volume_save(from: u16, to: u16) -> Action {
+    Action::SaveSettings {
+        base: at_volume(from),
+        new: at_volume(to),
+    }
+}
+
+#[test]
+fn volume_shows_the_chosen_value_until_its_save_comes_back() {
+    let mut harness = settings_page(with_file(defaults()));
+    drag_volume_to_end(&mut harness, true);
+    // The save is on its way: the slider stays where the user left it,
+    // even when the file is read again (after a hand edit, say) meanwhile.
+    assert_eq!(volume_value(&harness).as_deref(), Some("200%"));
+    ui_common::backend().set_snapshot(with_file(at_volume(150)));
+    harness.run();
+    assert_eq!(volume_value(&harness).as_deref(), Some("200%"));
+
+    // The save came back, but it failed: the slider shows the file.
+    ui_common::backend().set_snapshot(after_saves(at_volume(150), 1));
+    harness.run();
+    assert_eq!(volume_value(&harness).as_deref(), Some("150%"));
+}
+
+#[test]
+fn volume_arrow_presses_add_up() {
+    let mut harness = settings_page(with_file(defaults()));
+    focus_volume(&mut harness);
+    harness.key_press(egui::Key::ArrowRight);
+    harness.run();
+    harness.key_press(egui::Key::ArrowRight);
+    harness.run();
+    assert_eq!(volume_value(&harness).as_deref(), Some("110%"));
+    assert_eq!(
+        actions(),
+        vec![volume_save(100, 105), volume_save(105, 110)]
+    );
+}
+
+#[test]
+fn volume_dragged_back_before_the_file_catches_up_is_saved() {
+    // The file holds the slider's lowest value.
+    let mut harness = settings_page(with_file(at_volume(50)));
+    drag_volume_to_end(&mut harness, true);
+    // Back to the file's value before the first save reaches the page:
+    // still saved, from what the page last asked for, so the file and
+    // the server don't stay at 200.
+    drag_volume_to_end(&mut harness, false);
+    assert_eq!(actions(), vec![volume_save(50, 200), volume_save(200, 50)]);
+
+    // The first save lands while the second is still on its way. Letting
+    // go at the volume the file now holds is still saved, since the page
+    // last asked for 50.
+    ui_common::backend().set_snapshot(after_saves(at_volume(200), 1));
+    harness.run();
+    assert_eq!(volume_value(&harness).as_deref(), Some("50%"));
+    drag_volume_to_end(&mut harness, true);
+    assert_eq!(actions().len(), 3);
+    assert_eq!(actions()[2], volume_save(50, 200));
+
+    // The other two land, and the file ends at the last volume chosen.
+    ui_common::backend().set_snapshot(after_saves(at_volume(50), 2));
+    harness.run();
+    assert_eq!(volume_value(&harness).as_deref(), Some("200%"));
+    ui_common::backend().set_snapshot(after_saves(at_volume(200), 3));
+    harness.run();
+    assert_eq!(volume_value(&harness).as_deref(), Some("200%"));
+
+    // Caught up: letting go at the file's volume saves nothing.
+    drag_volume_to_end(&mut harness, true);
+    assert_eq!(actions().len(), 3);
+}

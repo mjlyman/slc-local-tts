@@ -12,6 +12,7 @@ use std::io;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::AtomicU16;
 use std::time::Duration;
 
 use axum::ServiceExt;
@@ -331,6 +332,7 @@ fn build_state(data: &DataDir, config: &Config, port: u16, app_info: AppInfo) ->
             preview_budget: PREVIEW_BUDGET,
             base_speed: config.base_speed.clone(),
         },
+        volume_percent: AtomicU16::new(config.volume_percent),
         app_info,
     })
 }

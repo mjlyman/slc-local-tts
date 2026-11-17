@@ -8,6 +8,7 @@
 use std::any::Any;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use std::time::{Duration, SystemTime};
 
 use axum::Json;
@@ -22,7 +23,7 @@ use super::AppState;
 use super::cooldown::on_load_failure;
 use super::error::{AppError, BudgetPhase, degraded, silent_ok, speech_failure};
 use super::slc::{CLIENT_HEADER, CLIENT_VALUE};
-use crate::audio::{apply_gain_and_limit, encode_wav, engine_gain};
+use crate::audio::{encode_wav, level};
 use crate::catalog::{self, Voice};
 use crate::engine::{CancelFlag, Prepared, SynthError, SynthJob, Synthesizer, engine_speed};
 use crate::frontend::text::{self, MAX_TEXT_CHARS};
@@ -465,7 +466,15 @@ async fn synthesize<S: ModelStore, Y: Synthesizer>(
         Ok(Err(err)) => return Err(synth_error(err)),
         Err(join_error) => return Err(crashed(join_error)),
     };
-    apply_gain_and_limit(&mut audio.samples, engine_gain(voice.engine));
+    let volume = state.volume_percent.load(Ordering::Relaxed);
+    let leveled = level(&mut audio.samples, audio.sample_rate, volume);
+    tracing::debug!(
+        voice = voice.id,
+        volume,
+        lufs = leveled.measured_lufs,
+        gain_db = leveled.gain_db,
+        "levelled"
+    );
     Ok(Synthesized::Spoken(Spoken::Wav {
         wav: encode_wav(&audio),
         seconds: audio.samples.len() as f32 / audio.sample_rate as f32,

@@ -16,6 +16,7 @@
 mod common;
 
 use std::path::PathBuf;
+use std::sync::atomic::AtomicU16;
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -102,6 +103,7 @@ fn real_app() -> NormalizePath<Router> {
             preview_budget: BUDGET,
             base_speed: config.base_speed,
         },
+        volume_percent: AtomicU16::new(config.volume_percent),
         app_info: common::test_app_info(),
     }))
 }

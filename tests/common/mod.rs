@@ -7,7 +7,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU16, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -20,7 +20,7 @@ use tower_http::normalize_path::NormalizePath;
 use slc_local_tts::api::cooldown::LoadCooldown;
 use slc_local_tts::api::slc::{CLIENT_HEADER, CLIENT_VALUE};
 use slc_local_tts::api::{ApiSettings, AppInfo, AppState, app};
-use slc_local_tts::audio::Audio;
+use slc_local_tts::audio::{Audio, DEFAULT_VOLUME_PERCENT};
 use slc_local_tts::catalog::{Archive, Voice};
 use slc_local_tts::config::{BaseSpeeds, Config};
 use slc_local_tts::engine::{CancelFlag, Prepared, SynthError, SynthJob, Synthesizer};
@@ -271,6 +271,7 @@ pub fn state_with_budgets(
             preview_budget: Duration::from_millis(preview_ms),
             base_speed: BaseSpeeds::default(),
         },
+        volume_percent: AtomicU16::new(DEFAULT_VOLUME_PERCENT),
         app_info: test_app_info(),
     })
 }
@@ -413,6 +414,21 @@ pub async fn slc_post(app: &NormalizePath<Router>, uri: &str) -> TestResponse {
 /// `DELETE uri`, as the settings window sends it.
 pub async fn slc_delete(app: &NormalizePath<Router>, uri: &str) -> TestResponse {
     slc_send(app, Request::delete(uri)).await
+}
+
+/// `PUT uri` with `body` as the JSON body, as the settings window sends it.
+pub async fn slc_put_json(
+    app: &NormalizePath<Router>,
+    uri: &str,
+    body: serde_json::Value,
+) -> TestResponse {
+    let request = Request::put(uri)
+        .header("host", HOST)
+        .header(CLIENT_HEADER, CLIENT_VALUE)
+        .header("content-type", "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    send(app, request).await
 }
 
 async fn slc_send(

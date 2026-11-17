@@ -8,10 +8,10 @@ use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::Duration;
 
 use reqwest::blocking::{Client, RequestBuilder, Response};
-use reqwest::header::{HeaderMap, HeaderValue};
+use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 
 use crate::api::error::ERROR_HEADER;
-use crate::api::slc::dto::{ModelDto, RequestsDto, StatusDto};
+use crate::api::slc::dto::{ModelDto, RequestsDto, StatusDto, VolumeDto};
 use crate::api::slc::{CLIENT_HEADER, CLIENT_VALUE};
 
 /// How long an ordinary call may take. The server answers these at once,
@@ -67,6 +67,8 @@ pub trait ServerApi: Send + Sync + 'static {
     fn delete(&self, stem: &str) -> Result<(), ClientError>;
     /// Asks the server to restart and install the downloaded update.
     fn apply_update(&self) -> Result<(), ClientError>;
+    /// Sets how loud speech is, in percent, from now on.
+    fn set_volume(&self, percent: u16) -> Result<(), ClientError>;
     /// The voice's preview, the one SLC's preview button plays.
     fn preview_wav(&self, voice_id: &str) -> Result<Preview, ClientError>;
     /// The port the calls go to.
@@ -167,6 +169,17 @@ impl ServerApi for HttpApi {
 
     fn apply_update(&self) -> Result<(), ClientError> {
         send(self.client.post(self.url("/slc/update/apply"))).map(drop)
+    }
+
+    fn set_volume(&self, percent: u16) -> Result<(), ClientError> {
+        // Serialising a struct of one number can't fail.
+        let body = serde_json::to_vec(&VolumeDto { percent }).expect("a number serialises");
+        let request = self
+            .client
+            .put(self.url("/slc/settings/volume"))
+            .header(CONTENT_TYPE, "application/json")
+            .body(body);
+        send(request).map(drop)
     }
 
     fn preview_wav(&self, voice_id: &str) -> Result<Preview, ClientError> {

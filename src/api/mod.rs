@@ -8,6 +8,7 @@ pub mod speak;
 pub mod voices;
 
 use std::sync::Arc;
+use std::sync::atomic::AtomicU16;
 use std::time::{Duration, Instant};
 
 use axum::extract::{DefaultBodyLimit, Request, State};
@@ -86,6 +87,12 @@ pub struct AppState<S, Y> {
     /// and the settings window.
     pub live: Arc<Live>,
     pub settings: ApiSettings,
+    /// How loud speech is, in percent; the settings window changes it while
+    /// the server runs. An atomic so any request can read or write it
+    /// without a lock. `Ordering::Relaxed` is enough because nothing else is
+    /// published with it: readers only need some recent value of this one
+    /// number.
+    pub volume_percent: AtomicU16,
     pub app_info: AppInfo,
 }
 

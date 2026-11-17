@@ -44,6 +44,10 @@ pub struct Snapshot {
     pub autostart: bool,
     /// `config.toml`'s settings, or why they couldn't be read.
     pub settings: Option<Result<FileSettings, String>>,
+    /// How many settings saves have finished. It goes up in the same
+    /// snapshot that brings each save's re-read of the file in `settings`,
+    /// so the Settings page can tell when a save it sent has come back.
+    pub settings_saves: u64,
     /// The result of the latest action, when it has something to say.
     pub notice: Option<Notice>,
 }

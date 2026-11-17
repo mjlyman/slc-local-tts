@@ -6,6 +6,7 @@ mod common;
 
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU16;
 use std::time::Duration;
 
 use axum::ServiceExt;
@@ -16,6 +17,7 @@ use tokio::net::TcpStream;
 use common::{FakeStore, FakeSynth};
 use slc_local_tts::api::cooldown::LoadCooldown;
 use slc_local_tts::api::{ApiSettings, AppState, app};
+use slc_local_tts::audio::DEFAULT_VOLUME_PERCENT;
 use slc_local_tts::config::BaseSpeeds;
 use slc_local_tts::server;
 use slc_local_tts::status::Live;
@@ -64,6 +66,7 @@ async fn expect_100_continue_over_real_socket() {
             preview_budget: Duration::from_secs(5),
             base_speed: BaseSpeeds::default(),
         },
+        volume_percent: AtomicU16::new(DEFAULT_VOLUME_PERCENT),
         app_info: common::test_app_info(),
     });
     // See `Started::serve` in src/server.rs for why the turbofish is needed.

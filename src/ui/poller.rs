@@ -190,6 +190,13 @@ pub struct WorkerResult {
     pub notice: Option<Notice>,
     pub settings: Option<Result<FileSettings, String>>,
     pub autostart: Option<bool>,
+    /// The volume the server just took on, so the snapshot's status shows
+    /// it at once instead of after the next poll. `None` when it wasn't
+    /// changed or the server couldn't be told.
+    pub volume_applied: Option<u16>,
+    /// A settings save finished (whether or not it worked), so the
+    /// snapshot's count of them goes up.
+    pub settings_saved: bool,
     /// The window should close itself.
     pub close_window: bool,
 }
@@ -292,6 +299,11 @@ impl Worker {
     /// page's last read, or an earlier save still on its way to the page,
     /// isn't undone. Then it reads the file back, so the page shows what the
     /// file holds even when the save failed.
+    ///
+    /// A new volume is also sent to the server once it's saved, so it
+    /// applies at once. A server that can't be told only gets it at its
+    /// next start, which the page's restart note says, so that isn't an
+    /// error.
     fn save_settings(&self, base: &FileSettings, new: &FileSettings) -> WorkerResult {
         let path = self.data.config_file();
         let saved = match config_edit::read(&path) {
@@ -300,8 +312,19 @@ impl Worker {
             // why in words for the user.
             Err(_) => config_edit::write(&path, new),
         };
+        let mut volume_applied = None;
+        if saved.is_ok() && new.volume_percent != base.volume_percent {
+            match self.api.set_volume(new.volume_percent) {
+                Ok(()) => volume_applied = Some(new.volume_percent),
+                Err(e) => tracing::warn!(
+                    "the volume is saved, but the server couldn't be told, so it applies at its next start ({e})"
+                ),
+            }
+        }
         let mut result = failure_notice(saved, |e| e.to_string());
+        result.volume_applied = volume_applied;
         result.settings = Some(self.read_settings());
+        result.settings_saved = true;
         result
     }
 
@@ -389,6 +412,11 @@ fn changed_fields(base: &FileSettings, new: &FileSettings, current: FileSettings
             new.port
         } else {
             current.port
+        },
+        volume_percent: if new.volume_percent != base.volume_percent {
+            new.volume_percent
+        } else {
+            current.volume_percent
         },
     }
 }
@@ -676,6 +704,15 @@ fn merge_keeping_notice(next: &mut Snapshot, result: WorkerResult) {
     if let Some(autostart) = result.autostart {
         next.autostart = autostart;
     }
+    // The status is the poll thread's, but it only re-reads the server
+    // later; set the new volume now, so the page doesn't briefly compare
+    // the saved file with the old volume and show its restart note.
+    if let (Some(percent), Some(status)) = (result.volume_applied, next.status.as_mut()) {
+        status.config.volume_percent = percent;
+    }
+    if result.settings_saved {
+        next.settings_saves += 1;
+    }
 }
 
 #[cfg(test)]
@@ -740,10 +777,10 @@ mod tests {
         /// The `seq` each `requests_after` call asked after.
         asked_after: Mutex<Vec<u64>>,
         voices_calls: Mutex<u32>,
-        /// Every download, delete and preview asked for, in order, such as
+        /// Every download, delete, preview and volume asked for, in order, such as
         /// "delete vits-piper-en_US-joe-medium".
         calls: Mutex<Vec<String>>,
-        /// What download and delete answer with, when they fail.
+        /// What download, delete and set_volume answer with, when they fail.
         refusal: Mutex<Option<ClientError>>,
         /// The `X-SLC-Local-TTS-Error` code a preview carries, if any.
         preview_error: Mutex<Option<String>>,
@@ -754,6 +791,12 @@ mod tests {
         port: Mutex<u16>,
         /// The port each status call went to.
         status_ports: Mutex<Vec<u16>>,
+        /// A `config.toml` that `set_volume` reads when it's called, so a
+        /// test can see what the file held at that moment.
+        config_file: Mutex<Option<PathBuf>>,
+        /// The file's volume each `set_volume` call saw (`None` if it
+        /// couldn't be read).
+        volume_in_file: Mutex<Vec<Option<u16>>>,
     }
 
     impl FakeApi {
@@ -839,6 +882,15 @@ mod tests {
 
         fn apply_update(&self) -> Result<(), ClientError> {
             self.call("apply", "update");
+            self.refused()
+        }
+
+        fn set_volume(&self, percent: u16) -> Result<(), ClientError> {
+            self.call("set_volume", &percent.to_string());
+            if let Some(path) = self.config_file.lock().unwrap().as_ref() {
+                let seen = config_edit::read(path).ok().map(|s| s.volume_percent);
+                self.volume_in_file.lock().unwrap().push(seen);
+            }
             self.refused()
         }
 
@@ -1082,6 +1134,7 @@ mod tests {
             check_for_updates: false,
             num_threads: 3,
             port: 9100,
+            volume_percent: 100,
         };
         let base = FileSettings::from_config(&Config::default());
         let result = worker(&api, &tmp).perform(Action::SaveSettings {
@@ -1090,6 +1143,7 @@ mod tests {
         });
         assert_eq!(result.notice, None);
         assert_eq!(result.settings, Some(Ok(new.clone())));
+        assert!(result.settings_saved);
         let path = tmp.path().join("config.toml");
         assert_eq!(config_edit::read(&path).unwrap(), new);
         // Written from the commented template, so its comments are there.
@@ -1109,6 +1163,8 @@ mod tests {
             ..base.clone()
         };
         let result = worker(&api, &tmp).perform(Action::SaveSettings { base, new });
+        // A failed save still counts as come back.
+        assert!(result.settings_saved);
         let notice = result.notice.expect("a notice");
         assert!(notice.is_error);
         assert!(
@@ -1130,7 +1186,7 @@ mod tests {
         );
     }
 
-    /// The defaults, as a page that read a file holding none of the three
+    /// The defaults, as a page that read a file holding none of the
     /// settings would have them.
     fn defaults() -> FileSettings {
         FileSettings::from_config(&Config::default())
@@ -1233,6 +1289,141 @@ num_threads = 2"
             ),
             "{text}"
         );
+    }
+
+    /// The `set_volume` calls `api` saw, such as "set_volume 130".
+    fn volume_calls(api: &FakeApi) -> Vec<String> {
+        api.calls()
+            .into_iter()
+            .filter(|c| c.starts_with("set_volume"))
+            .collect()
+    }
+
+    #[test]
+    fn saving_a_new_volume_tells_the_server() {
+        let tmp = tempfile::tempdir().unwrap();
+        let api = FakeApi::script(vec![Ok(status(0))]);
+        *api.config_file.lock().unwrap() = Some(tmp.path().join("config.toml"));
+        let base = defaults();
+        let new = FileSettings {
+            volume_percent: 130,
+            ..base.clone()
+        };
+
+        let result = worker(&api, &tmp).perform(Action::SaveSettings { base, new });
+
+        assert_eq!(result.notice, None);
+        assert_eq!(saved(&tmp).volume_percent, 130);
+        assert_eq!(volume_calls(&api), ["set_volume 130"]);
+        // The file already held the new volume when the server was told.
+        assert_eq!(*api.volume_in_file.lock().unwrap(), [Some(130)]);
+    }
+
+    #[test]
+    fn saving_other_settings_leaves_volume_alone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let api = FakeApi::script(vec![Ok(status(0))]);
+        let base = defaults();
+        let new = FileSettings {
+            num_threads: 3,
+            ..base.clone()
+        };
+
+        worker(&api, &tmp).perform(Action::SaveSettings { base, new });
+
+        assert_eq!(saved(&tmp).num_threads, 3);
+        assert_eq!(volume_calls(&api), Vec::<String>::new());
+    }
+
+    #[test]
+    fn failed_save_does_not_change_the_server() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("config.toml");
+        std::fs::write(&path, "port = \"not a number\"\n").unwrap();
+        let api = FakeApi::script(vec![Ok(status(0))]);
+        let base = defaults();
+        let new = FileSettings {
+            volume_percent: 130,
+            ..base.clone()
+        };
+
+        let result = worker(&api, &tmp).perform(Action::SaveSettings { base, new });
+
+        assert!(result.notice.expect("a notice").is_error);
+        assert_eq!(volume_calls(&api), Vec::<String>::new());
+    }
+
+    #[test]
+    fn volume_saved_while_server_is_down() {
+        let tmp = tempfile::tempdir().unwrap();
+        let api = FakeApi::script(vec![Ok(status(0))]);
+        *api.refusal.lock().unwrap() = Some(unreachable());
+        let base = defaults();
+        let new = FileSettings {
+            volume_percent: 70,
+            ..base.clone()
+        };
+
+        let result = worker(&api, &tmp).perform(Action::SaveSettings {
+            base,
+            new: new.clone(),
+        });
+
+        // The file has it, so it applies at the next start; the page's
+        // restart note says so, not an error.
+        assert_eq!(saved(&tmp).volume_percent, 70);
+        assert_eq!(volume_calls(&api), ["set_volume 70"]);
+        assert_eq!(result.notice, None);
+        assert_eq!(result.settings, Some(Ok(new)));
+    }
+
+    /// Saves a volume of 130 (the server started at 100), merges the result
+    /// into a snapshot holding the server's status, and returns it.
+    fn snapshot_after_volume_save(api: &Arc<FakeApi>) -> Snapshot {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = defaults();
+        let new = FileSettings {
+            volume_percent: 130,
+            ..base.clone()
+        };
+        let result = worker(api, &tmp).perform(Action::SaveSettings { base, new });
+        let mut snapshot = Snapshot {
+            status: Some(status(0)),
+            ..Snapshot::default()
+        };
+        merge(&mut snapshot, result);
+        snapshot
+    }
+
+    /// Whether the Settings page would show its restart note for `snapshot`.
+    fn restart_note_shows(snapshot: &Snapshot) -> bool {
+        let file = snapshot.settings.clone().unwrap().unwrap();
+        file != FileSettings::from_config(&snapshot.status.as_ref().unwrap().config)
+    }
+
+    #[test]
+    fn applied_volume_reaches_the_status_with_the_file() {
+        let api = FakeApi::script(vec![Ok(status(0))]);
+
+        let snapshot = snapshot_after_volume_save(&api);
+
+        // The same snapshot that brings the re-read file has the server's
+        // new volume, so the restart note doesn't flash up for a frame.
+        assert_eq!(snapshot.status.as_ref().unwrap().config.volume_percent, 130);
+        assert!(!restart_note_shows(&snapshot));
+    }
+
+    #[test]
+    fn volume_the_server_missed_stays_pending() {
+        let api = FakeApi::script(vec![Ok(status(0))]);
+        *api.refusal.lock().unwrap() = Some(unreachable());
+
+        let snapshot = snapshot_after_volume_save(&api);
+
+        // The server still plays at 100, so the restart note says the new
+        // volume waits for the next start.
+        assert_eq!(snapshot.status.as_ref().unwrap().config.volume_percent, 100);
+        assert!(restart_note_shows(&snapshot));
     }
 
     #[test]
@@ -1429,6 +1620,19 @@ num_threads = 2"
         // The next action said nothing, so the old notice goes.
         merge(&mut snapshot, WorkerResult::default());
         assert_eq!(snapshot.notice, None);
+    }
+
+    #[test]
+    fn merge_counts_settings_saves() {
+        let mut snapshot = Snapshot::default();
+        let saved = || WorkerResult {
+            settings_saved: true,
+            ..WorkerResult::default()
+        };
+        merge(&mut snapshot, saved());
+        merge(&mut snapshot, WorkerResult::default());
+        merge_keeping_notice(&mut snapshot, saved());
+        assert_eq!(snapshot.settings_saves, 2);
     }
 
     #[test]

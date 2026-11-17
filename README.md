@@ -60,8 +60,13 @@ The window has four pages:
 - **Activity:** each line SLC asked for since SLC Local TTS started. A
   failed line says why it failed and what to do. Turn on **Problems only**
   to see just the failures; **Open log folder** shows the older history.
-- **Settings:** start with Windows, update checks, CPU threads for speech,
-  the port, and the licences.
+- **Settings:** start with Windows, update checks, speech volume, CPU
+  threads for speech, the port, and the licences.
+  - **Speech volume** makes every voice louder or quieter, from 50% to
+    200%. It applies to new announcements at once, without a restart:
+    press Play on the Voices page to hear it. Lines SLC has already saved
+    keep their old volume until you clear SLC's cache (see "If something
+    goes wrong").
 
 Closing the window doesn't stop the voices.
 
@@ -163,6 +168,11 @@ corner, until you press **Ctrl+C**. It never installs updates.
 - **"Port 8765 is already in use".** Another program is using that port.
   Close it, or set a different `port` in `config.toml` and use the same
   port in SLC's Custom API URL.
+- **Voices are too quiet or too loud.** SLC Local TTS evens every voice out
+  to one level, so they all sound about as loud as each other. To make them
+  all louder or quieter, use **Speech volume** on the Settings page, or
+  SLC's own volume sliders. Lines SLC already has keep their old volume
+  until you clear its cache (see the next entry).
 - **You want SLC to say a line again with a different voice or setting.**
   SLC keeps every line it gets in its own audio cache. To clear it for one
   voice, use SLC's Cache Manager, or, with SLC closed, delete
@@ -251,6 +261,10 @@ port = 8765
 # CPU threads per synthesis, 1 to 8. More is faster but takes more CPU from
 # the sim.
 num_threads = 2
+
+# How loud the voices are, in percent, 50 to 200. Every voice is evened out
+# to the same level first; this turns that level up or down.
+volume_percent = 100
 
 # "normal" or "below_normal". Below-normal can starve speech when the sim
 # keeps every core busy, so normal is the default.

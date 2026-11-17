@@ -10,6 +10,12 @@ use crate::update::UpdateState;
 /// Under the threads stepper.
 pub const THREADS_NOTE: &str =
     "More threads speak faster but take CPU from your sim. 2 suits most PCs.";
+/// The volume slider's label.
+pub const VOLUME_LABEL: &str = "Speech volume";
+/// Under the volume slider.
+pub const VOLUME_NOTE: &str = "Applies to new announcements at once; press Play on the Voices \
+     page to hear it. Lines SLC has already saved keep their old volume until you clear its \
+     cache (see the README).";
 /// Shown while `config.toml` holds settings the server hasn't started with.
 pub const PENDING_NOTE: &str = "Changes apply the next time SLC Local TTS starts.";
 /// Under "Check for updates" in a copy that can't update itself.
@@ -143,6 +149,12 @@ mod tests {
             },
             FileSettings {
                 port: same.port + 1,
+                ..same.clone()
+            },
+            // Only when the server couldn't be told at once: it reports
+            // the volume it plays at.
+            FileSettings {
+                volume_percent: same.volume_percent + 30,
                 ..same.clone()
             },
         ];

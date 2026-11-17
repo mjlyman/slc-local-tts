@@ -16,6 +16,7 @@ pub struct FileSettings {
     pub check_for_updates: bool,
     pub num_threads: i32,
     pub port: u16,
+    pub volume_percent: u16,
 }
 
 impl FileSettings {
@@ -24,6 +25,7 @@ impl FileSettings {
             check_for_updates: c.check_for_updates,
             num_threads: c.num_threads,
             port: c.port,
+            volume_percent: c.volume_percent,
         }
     }
 }
@@ -58,6 +60,10 @@ pub const TEMPLATE: &str = r#"# SLC Local TTS settings.
 # CPU threads for each voice engine. More is faster but takes more CPU from
 # the flight sim. 1 to 8.
 # num_threads = 2
+
+# How loud the voices are, in percent. Every voice is evened out to the
+# same level first; this turns that level up or down. 50 to 200.
+# volume_percent = 100
 
 # Windows priority for speech: "normal" or "below_normal". Below normal can
 # be starved next to a busy flight sim.
@@ -127,6 +133,9 @@ pub fn write(path: &Path, new: &FileSettings) -> Result<(), EditError> {
     }
     if current.check_for_updates != new.check_for_updates {
         changes.push(("check_for_updates", new.check_for_updates.into()));
+    }
+    if current.volume_percent != new.volume_percent {
+        changes.push(("volume_percent", i64::from(new.volume_percent).into()));
     }
 
     // `toml::from_str` has accepted the text, so `toml_edit` accepts it too.
@@ -325,6 +334,7 @@ mod tests {
             check_for_updates: false,
             num_threads: 3,
             port: 8765,
+            volume_percent: 100,
         };
 
         write(&path, &new).unwrap();
@@ -449,6 +459,7 @@ mod tests {
         for key in [
             "# port = 8765",
             "# num_threads = 2",
+            "# volume_percent = 100",
             "# priority = \"normal\"",
             "# idle_unload_minutes = 10",
             "# check_for_updates = true",
@@ -486,6 +497,7 @@ mod tests {
                 check_for_updates: false,
                 num_threads: 2,
                 port: 9000,
+                volume_percent: 100,
             }
         );
     }
@@ -529,6 +541,24 @@ mod tests {
         // Uncommenting everything else, as the header says, still loads.
         let (_tmp2, all) = file_with(Some(&uncomment_all(&text)));
         assert_eq!(config::load(&all).unwrap().num_threads, 3);
+    }
+
+    #[test]
+    fn write_sets_volume_under_its_comment() {
+        let (_tmp, path) = file_with(Some(TEMPLATE));
+        let new = FileSettings {
+            volume_percent: 130,
+            ..defaults()
+        };
+
+        write(&path, &new).unwrap();
+
+        let text = fs::read_to_string(&path).unwrap();
+        assert_eq!(
+            text,
+            TEMPLATE.replace("# volume_percent = 100\n", "volume_percent = 130\n")
+        );
+        assert_eq!(config::load(&path).unwrap().volume_percent, 130);
     }
 
     #[test]

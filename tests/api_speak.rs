@@ -12,10 +12,11 @@ use serde_json::json;
 
 use common::{
     FakeStore, FakeSynth, HOST, TestResponse, capture_logs, eventually, get, get_with, post_json,
-    post_json_with, send, state, state_with, state_with_budgets, test_app,
+    post_json_with, send, slc_put_json, state, state_with, state_with_budgets, test_app,
 };
 use slc_local_tts::api::error::BudgetPhase;
 use slc_local_tts::api::speak::PREVIEW_TEXT;
+use slc_local_tts::audio::Audio;
 use slc_local_tts::engine::{Prepared, SynthError};
 use slc_local_tts::models::LoadRecovery;
 use slc_local_tts::status::records::Route;
@@ -737,4 +738,44 @@ async fn invalid_request_is_not_recorded() {
     assert_400(&resp);
     assert!(st.live.records_after(0).is_empty());
     assert_eq!(st.live.snapshot().latest_seq, 0);
+}
+
+// ---------------------------------------------------------------- volume
+
+/// The RMS of a 16-bit mono WAV's samples, on a 0..1 scale.
+fn wav_rms(body: &[u8]) -> f64 {
+    let (pairs, _) = body[44..].as_chunks::<2>();
+    let samples: Vec<f64> = pairs
+        .iter()
+        .map(|&pair| f64::from(i16::from_le_bytes(pair)) / 32_768.0)
+        .collect();
+    (samples.iter().map(|s| s * s).sum::<f64>() / samples.len() as f64).sqrt()
+}
+
+#[tokio::test]
+async fn speech_follows_live_volume() {
+    // One second of a quiet 440 Hz tone: long enough to measure its loudness.
+    let rate = 22_050;
+    let tone = (0..rate)
+        .map(|i| 0.05 * (2.0 * std::f32::consts::PI * 440.0 * i as f32 / rate as f32).sin())
+        .collect();
+    let synth = FakeSynth {
+        synth_result: Ok(Audio {
+            samples: tone,
+            sample_rate: rate as u32,
+        }),
+        ..Default::default()
+    };
+    let app = test_app(state_with(FakeStore::default(), synth, 2_000));
+    let uri = "/v1/text-to-speech/M1/stream";
+
+    let mut rms = Vec::new();
+    for percent in [50, 200] {
+        let set = slc_put_json(&app, "/slc/settings/volume", json!({"percent": percent})).await;
+        assert_eq!(set.status, StatusCode::NO_CONTENT, "{percent}");
+        let resp = post_json(&app, uri, speech_body("Cabin crew, prepare for landing.")).await;
+        assert_wav(&resp);
+        rms.push(wav_rms(&resp.body));
+    }
+    assert!(rms[1] > rms[0], "200% should be louder than 50%: {rms:?}");
 }

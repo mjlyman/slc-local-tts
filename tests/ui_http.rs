@@ -94,3 +94,13 @@ fn http_api_reports_refusals_and_absence() {
     drop(runtime);
     assert!(matches!(api.status(), Err(ClientError::Unreachable(_))));
 }
+
+#[test]
+fn http_api_sets_volume() {
+    let (_runtime, port) = serve();
+    let api = HttpApi::new(port).unwrap();
+
+    api.set_volume(140).unwrap();
+
+    assert_eq!(api.status().unwrap().config.volume_percent, 140);
+}

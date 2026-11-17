@@ -90,7 +90,15 @@ pub struct Config {
     pub log_level: LogLevel,
     pub base_speed: BaseSpeeds,
     pub supertonic: SupertonicConfig,
+    /// How loud the voices are, in percent of the level every line is
+    /// evened out to. [`VOLUME_MIN`] to [`VOLUME_MAX`].
+    pub volume_percent: u16,
 }
+
+/// The quietest `volume_percent` allowed.
+pub const VOLUME_MIN: u16 = 50;
+/// The loudest `volume_percent` allowed.
+pub const VOLUME_MAX: u16 = 200;
 
 impl Default for Config {
     fn default() -> Self {
@@ -103,6 +111,7 @@ impl Default for Config {
             log_level: LogLevel::Info,
             base_speed: BaseSpeeds::default(),
             supertonic: SupertonicConfig::default(),
+            volume_percent: crate::audio::DEFAULT_VOLUME_PERCENT,
         }
     }
 }
@@ -166,6 +175,12 @@ pub fn validate(c: &Config) -> Result<(), ConfigError> {
     check_speed("base_speed.kokoro", c.base_speed.kokoro)?;
     check_speed("base_speed.supertonic", c.base_speed.supertonic)?;
     check_int("supertonic.num_steps", c.supertonic.num_steps.into(), 1, 20)?;
+    check_int(
+        "volume_percent",
+        c.volume_percent.into(),
+        VOLUME_MIN.into(),
+        VOLUME_MAX.into(),
+    )?;
     Ok(())
 }
 
@@ -200,6 +215,7 @@ mod tests {
         assert_eq!(c.base_speed.supertonic, 1.05);
         assert_eq!(c.supertonic.num_steps, 5);
         assert!(c.check_for_updates);
+        assert_eq!(c.volume_percent, 100);
     }
 
     #[test]
@@ -240,6 +256,8 @@ mod tests {
             ("idle_unload_minutes = 0\n", "idle_unload_minutes", "0"),
             ("[base_speed]\npiper = 3.0\n", "base_speed.piper", "3"),
             ("[supertonic]\nnum_steps = 0\n", "supertonic.num_steps", "0"),
+            ("volume_percent = 49\n", "volume_percent", "49"),
+            ("volume_percent = 201\n", "volume_percent", "201"),
         ];
         for (toml, field, value) in cases {
             let e = err_of(toml);
